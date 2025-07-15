@@ -1,163 +1,101 @@
-import sys
-import csv
-import traceback
-from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout,
-    QWidget, QFileDialog, QTextEdit, QLineEdit
-)
+import tkinter as tk
+from tkinter import messagebox, filedialog
 from pymodbus.client.sync import ModbusTcpClient
-from pymodbus.exceptions import ModbusIOException
+import csv
 
+# Modbus Register Info
+PANELSERVER_UNIT_ID = 255
+DEVICE_ID_REGISTERS = list(range(505, 1001, 5))
 
-DEVICE_ID_REGISTERS = list(range(501, 1000, 5))  # 501, 506, 511, ..., 996
-DEVICE_ID_OFFSET = 4  # next register is always virtual address
-
-DEVICE_TYPES = {
-    "CL110": {
-        "model_reg": 31107,
-        "name_reg": 31000,
-        "sn_reg": 31089,
-        "rfid_reg": 31027
-    },
-    "TH110": {
-        "model_reg": 31107,
-        "name_reg": 31000,
-        "sn_reg": 31089,
-        "rfid_reg": 31027
-    },
-    "HeatTag": {
-        "model_reg": 31107,
-        "name_reg": 31000,
-        "sn_reg": 31089,
-        "rfid_reg": 31027
-    }
+# Wireless Device Register Map
+REGISTERS = {
+    "DeviceName": (31001, 10, "ascii"),
+    "RFID": (31027, 4, "uint64"),
+    "SerialNumber": (31089, 10, "ascii"),
+    "ProductModel": (31107, 8, "ascii"),
 }
 
+def decode_ascii(registers):
+    return ''.join(chr((r >> 8) & 0xFF) + chr(r & 0xFF) for r in registers).strip('\x00')
 
-def read_string(client, unit, address, length):
-    try:
-        rr = client.read_holding_registers(address, length, unit=unit)
-        if not rr or not hasattr(rr, "registers"):
-            return ""
-        chars = [chr(reg) for reg in rr.registers if 32 <= reg <= 126]
-        return ''.join(chars).strip()
-    except Exception:
-        return ""
+def decode_uint64(registers):
+    result = 0
+    for r in registers:
+        result = (result << 16) | r
+    return str(result)
 
+def get_device_ids(client):
+    ids = []
+    for reg in DEVICE_ID_REGISTERS:
+        res = client.read_holding_registers(reg, 1, unit=PANELSERVER_UNIT_ID)
+        if not res.isError():
+            device_id = res.registers[0]
+            if device_id not in (0, 0xFFFF):
+                ids.append(device_id)
+    return list(set(ids))
 
-class ModbusExporter(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Modbus Export Tool")
-
-        self.ip_input = QLineEdit()
-        self.ip_input.setPlaceholderText("PanelServer IP-Adresse (z.B. 192.168.1.100)")
-
-        self.debug_output = QTextEdit()
-        self.debug_output.setReadOnly(True)
-
-        self.export_button = QPushButton("CSV exportieren")
-        self.export_button.clicked.connect(self.export_data)
-
-        layout = QVBoxLayout()
-        layout.addWidget(QLabel("PanelServer IP-Adresse:"))
-        layout.addWidget(self.ip_input)
-        layout.addWidget(self.export_button)
-        layout.addWidget(QLabel("Debug-Ausgabe:"))
-        layout.addWidget(self.debug_output)
-
-        container = QWidget()
-        container.setLayout(layout)
-        self.setCentralWidget(container)
-
-    def log(self, message):
-        self.debug_output.append(message)
-        QApplication.processEvents()
-
-    def export_data(self):
-        ip = self.ip_input.text().strip()
-        if not ip:
-            self.log("⚠ Bitte IP-Adresse eingeben.")
-            return
-
-        self.log(f"Starte Verbindung zu {ip}...")
-
+def read_device_data(client, device_id):
+    data = {"DeviceID": device_id}
+    for key, (reg, count, dtype) in REGISTERS.items():
         try:
-            client = ModbusTcpClient(ip)
-            if not client.connect():
-                self.log("❌ Verbindung fehlgeschlagen.")
-                return
-            self.log("✓ Verbindung erfolgreich hergestellt.")
-        except Exception as e:
-            self.log(f"Fehler beim Verbinden: {str(e)}")
+            res = client.read_holding_registers(reg, count, unit=device_id)
+            if res.isError():
+                data[key] = "ERROR"
+            else:
+                if dtype == "ascii":
+                    data[key] = decode_ascii(res.registers)
+                elif dtype == "uint64":
+                    data[key] = decode_uint64(res.registers)
+        except:
+            data[key] = "ERROR"
+    return data
+
+def run_query(ip, status_callback):
+    client = ModbusTcpClient(ip)
+    if not client.connect():
+        messagebox.showerror("Fehler", "Verbindung zum PanelServer fehlgeschlagen.")
+        return
+
+    status_callback("Lese Device IDs vom PanelServer...")
+    device_ids = get_device_ids(client)
+
+    data = []
+    for i, device_id in enumerate(device_ids):
+        status_callback(f"Lese Device {i+1}/{len(device_ids)}: ID {device_id}")
+        data.append(read_device_data(client, device_id))
+
+    client.close()
+    filename = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
+    if filename:
+        with open(filename, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["DeviceID"] + list(REGISTERS.keys()))
+            writer.writeheader()
+            writer.writerows(data)
+        messagebox.showinfo("Fertig", f"Daten gespeichert in {filename}")
+
+class App:
+    def __init__(self, root):
+        self.root = root
+        root.title("Modbus Wireless Exporter")
+        root.geometry("400x200")
+
+        tk.Label(root, text="PanelServer IP-Adresse:").pack(pady=10)
+        self.ip_entry = tk.Entry(root, width=30)
+        self.ip_entry.pack()
+
+        self.status = tk.StringVar()
+        tk.Label(root, textvariable=self.status).pack(pady=10)
+
+        tk.Button(root, text="Abfragen & Exportieren", command=self.start).pack(pady=10)
+
+    def start(self):
+        ip = self.ip_entry.get()
+        if not ip:
+            messagebox.showwarning("Eingabe fehlt", "Bitte IP-Adresse eingeben.")
             return
-
-        devices = []
-
-        for rfid_reg in DEVICE_ID_REGISTERS:
-            try:
-                rfid_rr = client.read_holding_registers(rfid_reg, 4, unit=255)
-                addr_rr = client.read_holding_registers(rfid_reg + DEVICE_ID_OFFSET, 1, unit=255)
-
-                if not rfid_rr or not addr_rr or not hasattr(rfid_rr, "registers") or not hasattr(addr_rr, "registers"):
-                    continue
-
-                if all(reg == 0xFFFF for reg in rfid_rr.registers):
-                    continue
-
-                virtual_addr = addr_rr.registers[0]
-                if virtual_addr == 0xFFFF:
-                    continue
-
-                devices.append(virtual_addr)
-                self.log(f"✓ Gerät gefunden – Virtuelle Adresse: {virtual_addr}")
-
-            except ModbusIOException:
-                self.log(f"❌ Lesefehler bei Register {rfid_reg}")
-            except Exception as e:
-                self.log(f"⚠ Ausnahme bei Register {rfid_reg}: {str(e)}")
-
-        if not devices:
-            self.log("⚠ Keine gültigen DeviceIDs gefunden.")
-            return
-
-        output_data = [["Virtuelle Adresse", "Gerätename", "Produkttyp", "Seriennummer", "RF-ID"]]
-
-        for dev_id in devices:
-            self.log(f"→ Lese Gerät {dev_id}...")
-
-            model = read_string(client, dev_id, DEVICE_TYPES["CL110"]["model_reg"], 8)
-            name = read_string(client, dev_id, DEVICE_TYPES["CL110"]["name_reg"], 10)
-            sn = read_string(client, dev_id, DEVICE_TYPES["CL110"]["sn_reg"], 10)
-            rfid = read_string(client, dev_id, DEVICE_TYPES["CL110"]["rfid_reg"], 4)
-
-            dev_type = "Unbekannt"
-            for dtype, regs in DEVICE_TYPES.items():
-                if model.startswith(dtype):
-                    dev_type = dtype
-                    break
-
-            output_data.append([dev_id, name, dev_type, sn, rfid])
-
-        client.close()
-
-        path, _ = QFileDialog.getSaveFileName(self, "CSV speichern", "", "CSV Files (*.csv)")
-        if path:
-            try:
-                with open(path, "w", newline="") as f:
-                    writer = csv.writer(f)
-                    writer.writerows(output_data)
-                self.log(f"✓ CSV exportiert: {path}")
-            except Exception as e:
-                self.log(f"Fehler beim Speichern: {str(e)}")
-
+        run_query(ip, lambda msg: self.status.set(msg))
 
 if __name__ == "__main__":
-    try:
-        app = QApplication(sys.argv)
-        window = ModbusExporter()
-        window.show()
-        sys.exit(app.exec_())
-    except Exception:
-        print("Fehler beim Start der Anwendung:")
-        traceback.print_exc()
+    root = tk.Tk()
+    app = App(root)
+    root.mainloop()
