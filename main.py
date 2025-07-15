@@ -69,23 +69,23 @@ def read_device_data(client, device_id, log_widget=None):
     data = {"DeviceID": device_id}
 
     raw_pm = read_register(client, device_id, 31106, 8)
-if raw_pm:
-    product_model = decode_ascii(raw_pm)
-    data["ProductModel"] = product_model
-    log(f"→ Device {device_id} hat ProductModel: {product_model}", log_widget)
-    if "CL110" in product_model:
-        device_type = "CL110"
-    elif "TH110" in product_model:
-        device_type = "TH110"
-    elif "HT" in product_model or "HeatTag" in product_model:
-        device_type = "HeatTag"
+    if raw_pm:
+        product_model = decode_ascii(raw_pm)
+        data["ProductModel"] = product_model
+        log(f"→ Device {device_id} hat ProductModel: {product_model}", log_widget)
+        if "CL110" in product_model:
+            device_type = "CL110"
+        elif "TH110" in product_model:
+            device_type = "TH110"
+        elif "HT" in product_model or "HeatTag" in product_model:
+            device_type = "HeatTag"
+        else:
+            device_type = "Unbekannt"
+        data["DeviceType"] = device_type
     else:
-        device_type = "Unbekannt"
-    data["DeviceType"] = device_type
-else:
-    log(f"⚠ Device {device_id}: ProductModel konnte nicht gelesen werden", log_widget)
-    return data
-    
+        log(f"⚠ Device {device_id}: ProductModel konnte nicht gelesen werden", log_widget)
+        return data
+
     reg_map = DEVICE_REGISTER_MAP.get(device_type)
     if not reg_map:
         log(f"⚠ Kein Register-Mapping für Device {device_id} ({device_type})", log_widget)
