@@ -6,20 +6,19 @@ import csv
 PANELSERVER_UNIT_ID = 255
 DEVICE_ID_REGISTERS = list(range(504, 1000, 5))
 
-# Gerätespezifische Register-Zuordnung
 DEVICE_REGISTER_MAP = {
     "CL110": {
-        "RFID": (31026, 4, "uint64"),
+        "RFID": (31026, 4, "hex"),
         "SerialNumber": (31088, 10, "ascii"),
         "ProductModel": (31106, 8, "ascii"),
     },
     "TH110": {
-        "RFID": (31026, 4, "uint64"),
+        "RFID": (31026, 4, "hex"),
         "SerialNumber": (31088, 10, "ascii"),
         "ProductModel": (31106, 8, "ascii"),
     },
     "HeatTag": {
-        "RFID": (31026, 4, "uint64"),
+        "RFID": (31026, 4, "hex"),
         "SerialNumber": (31088, 10, "ascii"),
         "ProductModel": (31106, 8, "ascii"),
     },
@@ -33,6 +32,10 @@ def decode_uint64(registers):
     for r in registers:
         result = (result << 16) | r
     return str(result)
+
+def decode_hex_from_registers(registers):
+    hex_str = ''.join(f"{r:04X}" for r in registers)
+    return hex_str[-8:]  # Nur die letzten 4 Register → 8 HEX-Zeichen
 
 def read_register(client, device_id, address, count):
     try:
@@ -68,21 +71,23 @@ def get_device_ids(client, log_widget=None):
 def read_device_data(client, device_id, log_widget=None):
     data = {"DeviceID": device_id}
 
-    # Commercial Reference statt DeviceName
-    raw_cr = read_register(client, device_id, 31060, 16)
-    if raw_cr:
-        commercial_ref = decode_ascii(raw_cr)
+    # Versuche zuerst Commercial Reference zu lesen
+    ref_raw = read_register(client, device_id, 31060, 16)
+    if ref_raw:
+        commercial_ref = decode_ascii(ref_raw)
         data["CommercialReference"] = commercial_ref
         log(f"→ Device {device_id} hat Commercial Reference: {commercial_ref}", log_widget)
+
         if "EMS59443" in commercial_ref:
             device_type = "CL110"
         elif "EMS59440" in commercial_ref:
             device_type = "TH110"
         else:
-            device_type = "HeatTag"  # oder ggf. 'Unbekannt'
+            device_type = "HeatTag"  # Default für unbekannt
         data["DeviceType"] = device_type
     else:
         log(f"⚠ Device {device_id}: Commercial Reference konnte nicht gelesen werden", log_widget)
+        data["DeviceType"] = "Unbekannt"
         return data
 
     reg_map = DEVICE_REGISTER_MAP.get(device_type)
@@ -93,11 +98,13 @@ def read_device_data(client, device_id, log_widget=None):
     for key, (reg, count, dtype) in reg_map.items():
         raw = read_register(client, device_id, reg, count)
         if raw:
-            log(f"  📦 {key} (Reg {reg}, {count}): {raw}", log_widget)  # Zeige Rohwerte
+            log(f"  📦 {key} (Reg {reg}, {count}): {raw}", log_widget)
             if dtype == "ascii":
                 data[key] = decode_ascii(raw)
             elif dtype == "uint64":
                 data[key] = decode_uint64(raw)
+            elif dtype == "hex":
+                data[key] = decode_hex_from_registers(raw)
             else:
                 data[key] = str(raw)
             log(f"  ✓ {key}: {data[key]}", log_widget)
