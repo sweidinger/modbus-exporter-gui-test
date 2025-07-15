@@ -6,6 +6,14 @@ import csv
 PANELSERVER_UNIT_ID = 255
 DEVICE_ID_REGISTERS = list(range(504, 1000, 5))
 
+# Zuordnung Commercial Reference → Gerätetyp
+COMMERCIAL_REFERENCE_MAP = {
+    "EMS59440": "TH110",
+    "EMS59443": "CL110",
+    # Beispiel für HeatTag → anpassbar wenn bekannt:
+    "EMSxxxxx": "HeatTag"
+}
+
 # Gerätespezifische Register-Zuordnung
 DEVICE_REGISTER_MAP = {
     "CL110": {
@@ -68,22 +76,15 @@ def get_device_ids(client, log_widget=None):
 def read_device_data(client, device_id, log_widget=None):
     data = {"DeviceID": device_id}
 
-    raw_pm = read_register(client, device_id, 31106, 8)
-    if raw_pm:
-        product_model = decode_ascii(raw_pm)
-        data["ProductModel"] = product_model
-        log(f"→ Device {device_id} hat ProductModel: {product_model}", log_widget)
-        if "CL110" in product_model:
-            device_type = "CL110"
-        elif "TH110" in product_model:
-            device_type = "TH110"
-        elif "HT" in product_model or "HeatTag" in product_model:
-            device_type = "HeatTag"
-        else:
-            device_type = "Unbekannt"
+    raw_cr = read_register(client, device_id, 31060, 16)
+    if raw_cr:
+        commercial_ref = decode_ascii(raw_cr)
+        data["CommercialReference"] = commercial_ref
+        log(f"→ Device {device_id} hat Commercial Reference: {commercial_ref}", log_widget)
+        device_type = COMMERCIAL_REFERENCE_MAP.get(commercial_ref, "Unbekannt")
         data["DeviceType"] = device_type
     else:
-        log(f"⚠ Device {device_id}: ProductModel konnte nicht gelesen werden", log_widget)
+        log(f"⚠ Device {device_id}: Commercial Reference konnte nicht gelesen werden", log_widget)
         return data
 
     reg_map = DEVICE_REGISTER_MAP.get(device_type)
