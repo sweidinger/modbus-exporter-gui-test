@@ -79,12 +79,15 @@ def collect_data(ip, log_widget=None):
             device_type = "Unknown"
         device_data["DeviceType"] = device_type
 
-        # RFID → 31026 (6 Register, Hex-Darstellung aus den ersten 4)
+        # RFID → 31026 (6 Register)
         rfid_regs = read_registers(client, device_id, 31026, 6, log_widget)
         if rfid_regs:
             log(f"  📦 RFID (Reg 31026, 6): {rfid_regs}", log_widget)
-            hex_str = "".join(f"{reg:04X}" for reg in rfid_regs[:4])
-            device_data["RFID"] = hex_str
+            if len(rfid_regs) >= 4:
+                rfid_value = (rfid_regs[2] << 16) + rfid_regs[3]
+                device_data["RFID"] = f"{rfid_value:08X}"
+            else:
+                device_data["RFID"] = ""
         else:
             log("  ⚠ RFID: Fehler beim Lesen", log_widget)
 
@@ -98,7 +101,7 @@ def collect_data(ip, log_widget=None):
         else:
             log("  ⚠ SerialNumber: Fehler beim Lesen", log_widget)
 
-        # Product Model (nur zu Debugzwecken) → 31106 (8 Register, ASCII)
+        # Product Model (nur Debug) → 31106 (8 Register, ASCII)
         pm_regs = read_registers(client, device_id, 31106, 8, log_widget)
         if pm_regs:
             pm = decode_ascii(pm_regs)
