@@ -2,6 +2,9 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from pymodbus.client.sync import ModbusTcpClient
 import csv
+import struct
+from openpyxl import Workbook
+import os
 
 def log(msg, log_widget=None):
     print(msg)
@@ -79,15 +82,12 @@ def collect_data(ip, log_widget=None):
             device_type = "Unknown"
         device_data["DeviceType"] = device_type
 
-        # RFID → 31026 (6 Register)
+        # RFID → 31026 (6 Register, hex)
         rfid_regs = read_registers(client, device_id, 31026, 6, log_widget)
         if rfid_regs:
             log(f"  📦 RFID (Reg 31026, 6): {rfid_regs}", log_widget)
-            if len(rfid_regs) >= 4:
-                rfid_value = (rfid_regs[2] << 16) + rfid_regs[3]
-                device_data["RFID"] = f"{rfid_value:08X}"
-            else:
-                device_data["RFID"] = ""
+            hex_str = "".join(f"{reg:04X}" for reg in rfid_regs if reg > 0)
+            device_data["RFID"] = hex_str[:8]
         else:
             log("  ⚠ RFID: Fehler beim Lesen", log_widget)
 
@@ -101,14 +101,12 @@ def collect_data(ip, log_widget=None):
         else:
             log("  ⚠ SerialNumber: Fehler beim Lesen", log_widget)
 
-        # Product Model (nur Debug) → 31106 (8 Register, ASCII)
+        # Product Model (nur Debug) → 31106
         pm_regs = read_registers(client, device_id, 31106, 8, log_widget)
         if pm_regs:
             pm = decode_ascii(pm_regs)
             log(f"  📦 ProductModel (Reg 31106, 8): {pm_regs}", log_widget)
             log(f"  ✓ ProductModel: {pm}", log_widget)
-        else:
-            log("  ⚠ ProductModel: Fehler beim Lesen", log_widget)
 
         data.append(device_data)
 
@@ -116,31 +114,53 @@ def collect_data(ip, log_widget=None):
     return data
 
 def save_csv(data, filename, log_widget=None):
-    if filename:
-        fieldnames = ["DeviceID", "DeviceType", "RFID", "SerialNumber"]
-        with open(filename, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            for row in data:
-                filtered_row = {k: row.get(k, "") for k in fieldnames}
-                writer.writerow(filtered_row)
-        log(f"✓ CSV-Datei gespeichert: {filename}", log_widget)
-        messagebox.showinfo("Erfolg", f"Daten gespeichert in {filename}")
+    fieldnames = ["DeviceID", "DeviceType", "RFID", "SerialNumber"]
+    with open(filename, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in data:
+            writer.writerow({k: row.get(k, "") for k in fieldnames})
+    log(f"✓ CSV-Datei gespeichert: {filename}", log_widget)
+
+def save_excel(data, filename, log_widget=None):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Modbus Export"
+    headers = ["DeviceID", "DeviceType", "RFID", "SerialNumber"]
+    ws.append(headers)
+    for row in data:
+        ws.append([row.get(h, "") for h in headers])
+    wb.save(filename)
+    log(f"✓ Excel-Datei gespeichert: {filename}", log_widget)
 
 def on_start():
     ip = ip_entry.get()
     if not ip:
         messagebox.showerror("Fehler", "Bitte IP-Adresse eingeben.")
         return
+
+    if not (export_csv_var.get() or export_xlsx_var.get()):
+        messagebox.showerror("Fehler", "Bitte mindestens ein Exportformat auswählen.")
+        return
+
     log_text.delete(1.0, tk.END)
     log(f"Starte Verbindung zu {ip}...", log_text)
     data = collect_data(ip, log_text)
+
     if data:
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".csv", filetypes=[("CSV-Dateien", "*.csv")]
+        base_file = filedialog.asksaveasfilename(
+            title="Dateiname ohne Endung",
+            defaultextension="",
+            filetypes=[("Alle Dateien", "*.*")]
         )
-        if file_path:
-            save_csv(data, file_path, log_text)
+        if not base_file:
+            return
+
+        if export_csv_var.get():
+            save_csv(data, base_file + ".csv", log_text)
+        if export_xlsx_var.get():
+            save_excel(data, base_file + ".xlsx", log_text)
+        messagebox.showinfo("Erfolg", "Export abgeschlossen.")
 
 # GUI
 root = tk.Tk()
@@ -157,7 +177,15 @@ ip_entry.insert(0, "10.0.1.110")
 start_btn = ttk.Button(frame, text="Start", command=on_start)
 start_btn.grid(row=0, column=2, padx=5)
 
+export_csv_var = tk.BooleanVar(value=True)
+export_xlsx_var = tk.BooleanVar(value=False)
+
+csv_check = ttk.Checkbutton(frame, text="CSV exportieren", variable=export_csv_var)
+xlsx_check = ttk.Checkbutton(frame, text="Excel exportieren", variable=export_xlsx_var)
+csv_check.grid(row=1, column=0, sticky="w", pady=5)
+xlsx_check.grid(row=1, column=1, sticky="w", pady=5)
+
 log_text = tk.Text(frame, width=100, height=30)
-log_text.grid(row=1, column=0, columnspan=3, pady=10)
+log_text.grid(row=2, column=0, columnspan=3, pady=10)
 
 root.mainloop()
