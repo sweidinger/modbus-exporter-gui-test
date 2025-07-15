@@ -9,17 +9,17 @@ DEVICE_ID_REGISTERS = list(range(504, 1000, 5))
 # Gerätespezifische Register-Zuordnung
 DEVICE_REGISTER_MAP = {
     "CL110": {
-        "RFID": (31027, 4, "uint64"),
+        "RFID": (31026, 4, "uint64"),
         "SerialNumber": (31088, 10, "ascii"),
         "ProductModel": (31106, 8, "ascii"),
     },
     "TH110": {
-        "RFID": (31027, 4, "uint64"),
+        "RFID": (31026, 4, "uint64"),
         "SerialNumber": (31088, 10, "ascii"),
         "ProductModel": (31106, 8, "ascii"),
     },
     "HeatTag": {
-        "RFID": (31027, 4, "uint64"),
+        "RFID": (31026, 4, "uint64"),
         "SerialNumber": (31088, 10, "ascii"),
         "ProductModel": (31106, 8, "ascii"),
     },
