@@ -68,23 +68,23 @@ def read_device_data(client, device_id, log_widget):
     data = {"DeviceID": device_id, "DeviceType": "Unbekannt"}
     
     # Ersten Versuch: ProductModel auslesen
-    raw_pm = read_register(client, device_id, 31107, 8)
-    if raw_pm:
-        product_model = decode_ascii(raw_pm)
-        data["ProductModel"] = product_model
-        log(f"→ Device {device_id} hat ProductModel: {product_model}", log_widget)
-        if "CL110" in product_model:
-            device_type = "CL110"
-        elif "TH110" in product_model:
-            device_type = "TH110"
-        elif "HT" in product_model or "HeatTag" in product_model:
-            device_type = "HeatTag"
-        else:
-            device_type = "Unbekannt"
-        data["DeviceType"] = device_type
+    raw_dn = read_register(client, device_id, 31001, 10)
+if raw_dn:
+    device_name = decode_ascii(raw_dn)
+    data["DeviceName"] = device_name
+    log(f"→ Device {device_id} hat DeviceName: {device_name}", log_widget)
+    if "CL110" in device_name:
+        device_type = "CL110"
+    elif "TH110" in device_name:
+        device_type = "TH110"
+    elif "HT" in device_name or "HeatTag" in device_name:
+        device_type = "HeatTag"
     else:
-        log(f"⚠ Device {device_id}: ProductModel konnte nicht gelesen werden", log_widget)
-        return data
+        device_type = "Unbekannt"
+    data["DeviceType"] = device_type
+else:
+    log(f"⚠ Device {device_id}: DeviceName konnte nicht gelesen werden", log_widget)
+    return data
 
     regset = REGISTER_SETS.get(device_type)
     if not regset:
