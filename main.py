@@ -6,30 +6,22 @@ import csv
 PANELSERVER_UNIT_ID = 255
 DEVICE_ID_REGISTERS = list(range(504, 1000, 5))
 
-# Zuordnung Commercial Reference → Gerätetyp
-COMMERCIAL_REFERENCE_MAP = {
-    "EMS59440": "TH110",
-    "EMS59443": "CL110",
-    # Beispiel für HeatTag → anpassbar wenn bekannt:
-    "EMSxxxxx": "HeatTag"
-}
-
 # Gerätespezifische Register-Zuordnung
 DEVICE_REGISTER_MAP = {
     "CL110": {
         "RFID": (31027, 4, "uint64"),
-        "SerialNumber": (31089, 10, "ascii"),
-        "ProductModel": (31107, 8, "ascii"),
+        "SerialNumber": (31088, 10, "ascii"),
+        "ProductModel": (31106, 8, "ascii"),
     },
     "TH110": {
         "RFID": (31027, 4, "uint64"),
-        "SerialNumber": (31089, 10, "ascii"),
-        "ProductModel": (31107, 8, "ascii"),
+        "SerialNumber": (31088, 10, "ascii"),
+        "ProductModel": (31106, 8, "ascii"),
     },
     "HeatTag": {
         "RFID": (31027, 4, "uint64"),
-        "SerialNumber": (31089, 10, "ascii"),
-        "ProductModel": (31107, 8, "ascii"),
+        "SerialNumber": (31088, 10, "ascii"),
+        "ProductModel": (31106, 8, "ascii"),
     },
 }
 
@@ -76,12 +68,18 @@ def get_device_ids(client, log_widget=None):
 def read_device_data(client, device_id, log_widget=None):
     data = {"DeviceID": device_id}
 
+    # Commercial Reference statt DeviceName
     raw_cr = read_register(client, device_id, 31060, 16)
     if raw_cr:
         commercial_ref = decode_ascii(raw_cr)
         data["CommercialReference"] = commercial_ref
         log(f"→ Device {device_id} hat Commercial Reference: {commercial_ref}", log_widget)
-        device_type = COMMERCIAL_REFERENCE_MAP.get(commercial_ref, "Unbekannt")
+        if "EMS59443" in commercial_ref:
+            device_type = "CL110"
+        elif "EMS59440" in commercial_ref:
+            device_type = "TH110"
+        else:
+            device_type = "HeatTag"  # oder ggf. 'Unbekannt'
         data["DeviceType"] = device_type
     else:
         log(f"⚠ Device {device_id}: Commercial Reference konnte nicht gelesen werden", log_widget)
@@ -95,6 +93,7 @@ def read_device_data(client, device_id, log_widget=None):
     for key, (reg, count, dtype) in reg_map.items():
         raw = read_register(client, device_id, reg, count)
         if raw:
+            log(f"  📦 {key} (Reg {reg}, {count}): {raw}", log_widget)  # Zeige Rohwerte
             if dtype == "ascii":
                 data[key] = decode_ascii(raw)
             elif dtype == "uint64":
