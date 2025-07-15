@@ -1,4 +1,4 @@
-from pymodbus.client import ModbusTcpClient
+from pymodbus.client.tcp import ModbusTcpClient
 from pymodbus.payload import BinaryPayloadDecoder
 from pymodbus.constants import Endian
 import csv
