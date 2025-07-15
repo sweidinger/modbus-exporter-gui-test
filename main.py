@@ -1,142 +1,85 @@
-import tkinter as tk
-from tkinter import messagebox, filedialog, scrolledtext
-try:
-    # Try the newer import path first
-    from pymodbus.client.tcp import ModbusTcpClient
-except ImportError:
-    try:
-        # Fall back to the older import path
-        from pymodbus.client import ModbusTcpClient
-    except ImportError:
-        # Last resort - very old import path
-        from pymodbus.client.sync import ModbusTcpClient
+from pymodbus.client import ModbusTcpClient
+from pymodbus.payload import BinaryPayloadDecoder
+from pymodbus.constants import Endian
 import csv
 
-PANELSERVER_UNIT_ID = 255
-DEVICE_ID_REGISTERS = list(range(509, 560, 5))
+# Konfiguration
+PANELSERVER_IP = '10.0.1.110'
+PANELSERVER_ID = 255
+OUTPUT_FILE = 'modbus_devices.csv'
 
-REGISTERS_COMMON = {
-    "DeviceName": (31000, 10, "ascii"),
-    "Raw_31030": (31030, 1, "uint"),
-    "Raw_31031": (31031, 1, "uint"),
-    "Raw_31038": (31038, 1, "uint"),
-    "Raw_31039": (31039, 1, "uint"),
+# Konstante Start-Register für bis zu 100 Geräte
+RFID_START = 501
+VIRTUAL_START_OFFSET = 4
+DEVICE_COUNT = 100
+
+# Geräte-spezifische Register
+REGISTER_SETS = {
+    "device_name": (31000, 10),
+    "product_model": (31107, 8),
+    "serial_number": (31089, 10),
+    "rfid": (31027, 4)
 }
 
-def decode_ascii(registers):
-    return ''.join(chr((r >> 8) & 0xFF) + chr(r & 0xFF) for r in registers).strip('\x00')
+def read_ascii_registers(client, unit_id, address, length):
+    try:
+        result = client.read_holding_registers(address, length, unit=unit_id)
+        if result.isError() or not result.registers:
+            return ""
+        decoder = BinaryPayloadDecoder.fromRegisters(result.registers, Endian.Big)
+        return decoder.decode_string(length * 2).decode(errors="ignore").strip('\x00 ')
+    except Exception as e:
+        return f"ERR: {e}"
 
-def decode_uint(registers):
-    return str(registers[0]) if registers else ""
+def get_device_ids(client):
+    device_ids = []
+    print("→ Suche DeviceIDs in festen Registern...")
+    for i in range(DEVICE_COUNT):
+        rfid_reg = RFID_START + i * 5
+        virtual_reg = rfid_reg + VIRTUAL_START_OFFSET
+        result = client.read_holding_registers(virtual_reg, 1, unit=PANELSERVER_ID)
+        if result and not result.isError() and result.registers[0] != 0xFFFF:
+            device_id = result.registers[0]
+            device_ids.append(device_id)
+            print(f"✓ Gefunden: DeviceID {device_id} bei Register {virtual_reg}")
+    return device_ids
 
-def get_device_ids(client, log):
-    ids = []
-    log("→ Suche DeviceIDs in alternativen Registern (509, 514, 519, ...)")
-    for reg in DEVICE_ID_REGISTERS:
-        try:
-            # Try both parameter styles for compatibility
-            try:
-                res = client.read_holding_registers(reg, count=1, slave=PANELSERVER_UNIT_ID)
-            except TypeError:
-                res = client.read_holding_registers(reg, 1, unit=PANELSERVER_UNIT_ID)
-            
-            if not res.isError():
-                val = res.registers[0]
-                if val not in (0, 0xFFFF):
-                    ids.append(val)
-                    log(f"✓ Reg {reg}: DeviceID {val}")
-        except Exception as e:
-            log(f"⚠ Fehler bei Reg {reg}: {e}")
-    if not ids:
-        log("⚠ Keine DeviceIDs gefunden in alternativen Registern.")
-    return ids
+def poll_device_info(client, device_id):
+    info = {"DeviceID": device_id}
+    for key, (reg, length) in REGISTER_SETS.items():
+        info[key] = read_ascii_registers(client, device_id, reg, length)
+    return info
 
-def read_device_data(client, device_id, log):
-    data = {"DeviceID": device_id}
-    log(f"→ Lese Daten von Device {device_id}")
-    for key, (reg, count, dtype) in REGISTERS_COMMON.items():
-        try:
-            # Try both parameter styles for compatibility
-            try:
-                res = client.read_holding_registers(reg, count=count, slave=device_id)
-            except TypeError:
-                res = client.read_holding_registers(reg, count, unit=device_id)
-            
-            if res.isError():
-                data[key] = "ERROR"
-                log(f"  ⚠ {key}: Fehler beim Lesen")
-            else:
-                if dtype == "ascii":
-                    data[key] = decode_ascii(res.registers)
-                elif dtype == "uint":
-                    data[key] = decode_uint(res.registers)
-                log(f"  ✓ {key}: {data[key]}")
-        except Exception as e:
-            data[key] = "ERROR"
-            log(f"  ⚠ {key}: Ausnahmefehler: {e}")
-    return data
+def main():
+    print(f"Starte Verbindung zu {PANELSERVER_IP}...")
+    client = ModbusTcpClient(PANELSERVER_IP)
+    if not client.connect():
+        print("✖ Verbindung fehlgeschlagen.")
+        return
 
-class App:
-    def __init__(self, root):
-        self.root = root
-        root.title("Modbus Wireless Exporter")
-        root.geometry("750x500")
+    print("✓ Verbindung erfolgreich hergestellt.")
+    devices = get_device_ids(client)
 
-        tk.Label(root, text="PanelServer IP-Adresse:").pack(pady=5)
-        self.ip_entry = tk.Entry(root, width=30)
-        self.ip_entry.pack()
+    if not devices:
+        print("⚠ Keine gültigen DeviceIDs gefunden.")
+        return
 
-        tk.Button(root, text="Abfragen & Exportieren", command=self.start).pack(pady=10)
+    data = []
+    for device_id in devices:
+        print(f"→ Lese Daten von DeviceID {device_id}...")
+        info = poll_device_info(client, device_id)
+        data.append(info)
 
-        tk.Label(root, text="Debug Log:").pack()
-        self.log_box = scrolledtext.ScrolledText(root, height=20, width=100)
-        self.log_box.pack(padx=10, pady=5)
+    client.close()
 
-    def log(self, message):
-        self.log_box.insert(tk.END, message + "\n")
-        self.log_box.see(tk.END)
-        print(message)
+    # CSV speichern
+    fieldnames = ["DeviceID", "device_name", "product_model", "serial_number", "rfid"]
+    with open(OUTPUT_FILE, mode='w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(data)
 
-    def start(self):
-        ip = self.ip_entry.get()
-        self.log_box.delete("1.0", tk.END)
-
-        if not ip:
-            messagebox.showwarning("Eingabe fehlt", "Bitte IP-Adresse eingeben.")
-            return
-
-        self.log(f"Starte Verbindung zu {ip}...")
-        client = ModbusTcpClient(ip)
-        if not client.connect():
-            self.log("❌ Verbindung fehlgeschlagen!")
-            messagebox.showerror("Fehler", "Keine Verbindung zum PanelServer möglich.")
-            return
-        self.log("✓ Verbindung erfolgreich hergestellt.")
-
-        device_ids = get_device_ids(client, self.log)
-        if not device_ids:
-            self.log("⚠ Keine gültigen DeviceIDs gefunden.")
-            client.close()
-            return
-
-        data = []
-        for i, device_id in enumerate(device_ids):
-            self.log(f"[{i+1}/{len(device_ids)}] Verarbeite Device ID {device_id}")
-            data.append(read_device_data(client, device_id, self.log))
-
-        client.close()
-        filename = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
-        if filename:
-            with open(filename, "w", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=["DeviceID"] + list(REGISTERS_COMMON.keys()))
-                writer.writeheader()
-                writer.writerows(data)
-            self.log(f"✓ CSV-Datei gespeichert: {filename}")
-            messagebox.showinfo("Fertig", f"Daten gespeichert in {filename}")
-        else:
-            self.log("⚠ CSV-Speichern abgebrochen.")
+    print(f"✓ Export abgeschlossen: {OUTPUT_FILE}")
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = App(root)
-    root.mainloop()
+    main()
