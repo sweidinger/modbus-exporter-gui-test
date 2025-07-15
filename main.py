@@ -4,28 +4,26 @@ from pymodbus.client.sync import ModbusTcpClient
 import csv
 
 PANELSERVER_UNIT_ID = 255
-DEVICE_ID_REGISTERS = list(range(505, 1001, 5))
+DEVICE_ID_REGISTERS = list(range(509, 560, 5))
 
-REGISTERS = {
-    "DeviceName": (31001, 10, "ascii"),
-    "RFID": (31027, 4, "uint64"),
-    "SerialNumber": (31089, 10, "ascii"),
-    "ProductModel": (31107, 8, "ascii"),
+REGISTERS_COMMON = {
+    "DeviceName": (31000, 10, "ascii"),
+    "Raw_31030": (31030, 1, "uint"),
+    "Raw_31031": (31031, 1, "uint"),
+    "Raw_31038": (31038, 1, "uint"),
+    "Raw_31039": (31039, 1, "uint"),
 }
 
 def decode_ascii(registers):
     return ''.join(chr((r >> 8) & 0xFF) + chr(r & 0xFF) for r in registers).strip('\x00')
 
-def decode_uint64(registers):
-    result = 0
-    for r in registers:
-        result = (result << 16) | r
-    return str(result)
+def decode_uint(registers):
+    return str(registers[0]) if registers else ""
 
 def get_device_ids(client, log):
     ids = []
     log("→ Suche DeviceIDs in alternativen Registern (509, 514, 519, ...)")
-    for reg in range(509, 560, 5):
+    for reg in DEVICE_ID_REGISTERS:
         try:
             res = client.read_holding_registers(reg, 1, unit=PANELSERVER_UNIT_ID)
             if not res.isError():
@@ -38,11 +36,11 @@ def get_device_ids(client, log):
     if not ids:
         log("⚠ Keine DeviceIDs gefunden in alternativen Registern.")
     return ids
-    
+
 def read_device_data(client, device_id, log):
     data = {"DeviceID": device_id}
     log(f"→ Lese Daten von Device {device_id}")
-    for key, (reg, count, dtype) in REGISTERS.items():
+    for key, (reg, count, dtype) in REGISTERS_COMMON.items():
         try:
             res = client.read_holding_registers(reg, count, unit=device_id)
             if res.isError():
@@ -51,8 +49,8 @@ def read_device_data(client, device_id, log):
             else:
                 if dtype == "ascii":
                     data[key] = decode_ascii(res.registers)
-                elif dtype == "uint64":
-                    data[key] = decode_uint64(res.registers)
+                elif dtype == "uint":
+                    data[key] = decode_uint(res.registers)
                 log(f"  ✓ {key}: {data[key]}")
         except Exception as e:
             data[key] = "ERROR"
@@ -63,7 +61,7 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("Modbus Wireless Exporter")
-        root.geometry("700x500")
+        root.geometry("750x500")
 
         tk.Label(root, text="PanelServer IP-Adresse:").pack(pady=5)
         self.ip_entry = tk.Entry(root, width=30)
@@ -78,7 +76,7 @@ class App:
     def log(self, message):
         self.log_box.insert(tk.END, message + "\n")
         self.log_box.see(tk.END)
-        print(message)  # optional: für Entwicklerkonsole
+        print(message)
 
     def start(self):
         ip = self.ip_entry.get()
@@ -111,7 +109,7 @@ class App:
         filename = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
         if filename:
             with open(filename, "w", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=["DeviceID"] + list(REGISTERS.keys()))
+                writer = csv.DictWriter(f, fieldnames=["DeviceID"] + list(REGISTERS_COMMON.keys()))
                 writer.writeheader()
                 writer.writerows(data)
             self.log(f"✓ CSV-Datei gespeichert: {filename}")
