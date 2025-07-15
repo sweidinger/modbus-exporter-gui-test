@@ -1,181 +1,161 @@
 import tkinter as tk
-from tkinter import messagebox, filedialog, scrolledtext
+from tkinter import ttk, filedialog, messagebox
 from pymodbus.client.sync import ModbusTcpClient
 import csv
-
-PANELSERVER_UNIT_ID = 255
-DEVICE_ID_REGISTERS = list(range(504, 1000, 5))
-
-DEVICE_REGISTER_MAP = {
-    "CL110": {
-        "RFID": (31026, 4, "hex"),
-        "SerialNumber": (31088, 10, "ascii"),
-        "ProductModel": (31106, 8, "ascii"),
-    },
-    "TH110": {
-        "RFID": (31026, 4, "hex"),
-        "SerialNumber": (31088, 10, "ascii"),
-        "ProductModel": (31106, 8, "ascii"),
-    },
-    "HeatTag": {
-        "RFID": (31026, 4, "hex"),
-        "SerialNumber": (31088, 10, "ascii"),
-        "ProductModel": (31106, 8, "ascii"),
-    },
-}
-
-def decode_ascii(registers):
-    return ''.join(chr((r >> 8) & 0xFF) + chr(r & 0xFF) for r in registers).strip('\x00')
-
-def decode_uint64(registers):
-    result = 0
-    for r in registers:
-        result = (result << 16) | r
-    return str(result)
-
-def decode_hex_from_registers(registers):
-    hex_str = ''.join(f"{r:04X}" for r in registers)
-    return hex_str[-8:]  # Nur die letzten 4 Register → 8 HEX-Zeichen
-
-def read_register(client, device_id, address, count):
-    try:
-        res = client.read_holding_registers(address, count, unit=device_id)
-        if not res.isError():
-            return res.registers
-    except:
-        pass
-    return None
+import struct
 
 def log(msg, log_widget=None):
     print(msg)
     if log_widget:
-        log_widget.insert(tk.END, msg + '\n')
+        log_widget.insert(tk.END, msg + "\n")
         log_widget.see(tk.END)
-        log_widget.update()
+
+def decode_ascii(registers):
+    return "".join(
+        chr((reg >> 8) & 0xFF) + chr(reg & 0xFF) for reg in registers
+    ).split("\x00")[0].strip()
+
+def read_registers(client, device_id, address, count, log_widget=None):
+    try:
+        result = client.read_holding_registers(address, count, unit=device_id)
+        if result.isError():
+            raise Exception(f"Modbus-Fehler: {result}")
+        return result.registers
+    except Exception as e:
+        log(f"⚠ Fehler beim Lesen der Register {address}: {e}", log_widget)
+        return None
 
 def get_device_ids(client, log_widget=None):
-    ids = []
-    for reg in DEVICE_ID_REGISTERS:
-        res = client.read_holding_registers(reg, 1, unit=PANELSERVER_UNIT_ID)
-        if not res.isError():
-            device_id = res.registers[0]
-            if device_id not in (0, 0xFFFF):
-                ids.append(device_id)
-                log(f"✓ Reg {reg}: DeviceID {device_id}", log_widget)
-            else:
-                log(f"- Kein gültiger DeviceID-Wert in Register {reg}", log_widget)
+    base = 504
+    step = 5
+    max_devices = 100
+    device_ids = []
+
+    log("→ Suche DeviceIDs in alternativen Registern (504, 509, 514, ...)", log_widget)
+    for i in range(max_devices):
+        addr = base + (i * step)
+        result = read_registers(client, 255, addr, 1, log_widget)
+        if result and result[0] not in (0, 0xFFFF):
+            device_id = result[0]
+            log(f"✓ Reg {addr}: DeviceID {device_id}", log_widget)
+            device_ids.append(device_id)
         else:
-            log(f"- Fehler beim Lesen von Register {reg}", log_widget)
-    return list(set(ids))
+            log(f"- Kein gültiger DeviceID-Wert in Register {addr}", log_widget)
+    return device_ids
 
-def read_device_data(client, device_id, log_widget=None):
-    data = {"DeviceID": device_id}
-
-    # Versuche zuerst Commercial Reference zu lesen
-    ref_raw = read_register(client, device_id, 31060, 16)
-    if ref_raw:
-        commercial_ref = decode_ascii(ref_raw)
-        data["CommercialReference"] = commercial_ref
-        log(f"→ Device {device_id} hat Commercial Reference: {commercial_ref}", log_widget)
-
-        if "EMS59443" in commercial_ref:
-            device_type = "CL110"
-        elif "EMS59440" in commercial_ref:
-            device_type = "TH110"
-        else:
-            device_type = "HeatTag"  # Default für unbekannt
-        data["DeviceType"] = device_type
-    else:
-        log(f"⚠ Device {device_id}: Commercial Reference konnte nicht gelesen werden", log_widget)
-        data["DeviceType"] = "Unbekannt"
-        return data
-
-    reg_map = DEVICE_REGISTER_MAP.get(device_type)
-    if not reg_map:
-        log(f"⚠ Kein Register-Mapping für Device {device_id} ({device_type})", log_widget)
-        return data
-
-    for key, (reg, count, dtype) in reg_map.items():
-        raw = read_register(client, device_id, reg, count)
-        if raw:
-            log(f"  📦 {key} (Reg {reg}, {count}): {raw}", log_widget)
-            if dtype == "ascii":
-                data[key] = decode_ascii(raw)
-            elif dtype == "uint64":
-                data[key] = decode_uint64(raw)
-            elif dtype == "hex":
-                data[key] = decode_hex_from_registers(raw)
-            else:
-                data[key] = str(raw)
-            log(f"  ✓ {key}: {data[key]}", log_widget)
-        else:
-            data[key] = "ERROR"
-            log(f"  ⚠ {key}: Fehler beim Lesen", log_widget)
-
-    return data
-
-def run_query(ip, log_widget):
-    log("Starte Verbindung zu " + ip + "...", log_widget)
+def collect_data(ip, log_widget=None):
     client = ModbusTcpClient(ip)
     if not client.connect():
-        messagebox.showerror("Fehler", "Verbindung zum PanelServer fehlgeschlagen.")
-        log("✗ Verbindung fehlgeschlagen", log_widget)
-        return
+        log("❌ Verbindung fehlgeschlagen.", log_widget)
+        return None
 
     log("✓ Verbindung erfolgreich hergestellt.", log_widget)
-    log("→ Suche DeviceIDs in alternativen Registern (504, 509, 514, ...)", log_widget)
-
     device_ids = get_device_ids(client, log_widget)
     if not device_ids:
         log("⚠ Keine gültigen DeviceIDs gefunden.", log_widget)
-        return
+        client.close()
+        return None
 
     data = []
-    for i, device_id in enumerate(device_ids):
-        log(f"[{i+1}/{len(device_ids)}] Verarbeite Device ID {device_id}", log_widget)
-        result = read_device_data(client, device_id, log_widget)
-        data.append(result)
+    for idx, device_id in enumerate(device_ids, start=1):
+        log(f"[{idx}/{len(device_ids)}] Verarbeite Device ID {device_id}", log_widget)
+        device_data = {
+            "DeviceID": device_id,
+            "DeviceType": "",
+            "RFID": "",
+            "SerialNumber": "",
+        }
+
+        # Commercial Reference → 31060
+        ref_regs = read_registers(client, device_id, 31060, 16, log_widget)
+        ref = decode_ascii(ref_regs) if ref_regs else ""
+        log(f"→ Device {device_id} hat Commercial Reference: {ref}", log_widget)
+
+        device_type = ""
+        if ref == "EMS59443":
+            device_type = "CL110"
+        elif ref == "EMS59440":
+            device_type = "TH110"
+        else:
+            device_type = "Unknown"
+        device_data["DeviceType"] = device_type
+
+        # RFID → 31026 (6 Register, hex)
+        rfid_regs = read_registers(client, device_id, 31026, 6, log_widget)
+        if rfid_regs:
+            hex_str = "".join(f"{reg:04X}" for reg in rfid_regs)
+            log(f"  📦 RFID (Reg 31026, 6): {rfid_regs}", log_widget)
+            device_data["RFID"] = hex_str[:8]
+        else:
+            log("  ⚠ RFID: Fehler beim Lesen", log_widget)
+
+        # Serial Number → 31088 (10 Register, ASCII)
+        sn_regs = read_registers(client, device_id, 31088, 10, log_widget)
+        if sn_regs:
+            sn = decode_ascii(sn_regs)
+            log(f"  📦 SerialNumber (Reg 31088, 10): {sn_regs}", log_widget)
+            log(f"  ✓ SerialNumber: {sn}", log_widget)
+            device_data["SerialNumber"] = sn
+        else:
+            log("  ⚠ SerialNumber: Fehler beim Lesen", log_widget)
+
+        # Product Model (nur zu Debugzwecken) → 31106 (8 Register, ASCII)
+        pm_regs = read_registers(client, device_id, 31106, 8, log_widget)
+        if pm_regs:
+            pm = decode_ascii(pm_regs)
+            log(f"  📦 ProductModel (Reg 31106, 8): {pm_regs}", log_widget)
+            log(f"  ✓ ProductModel: {pm}", log_widget)
+        else:
+            log("  ⚠ ProductModel: Fehler beim Lesen", log_widget)
+
+        data.append(device_data)
 
     client.close()
+    return data
 
-    if not data:
-        log("⚠ Keine Daten zum Exportieren vorhanden.", log_widget)
-        return
-
-    filename = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV-Dateien", "*.csv")])
+def save_csv(data, filename, log_widget=None):
     if filename:
-        fieldnames = sorted({k for d in data for k in d.keys()})
+        fieldnames = ["DeviceID", "DeviceType", "RFID", "SerialNumber"]
         with open(filename, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
-            writer.writerows(data)
+            for row in data:
+                filtered_row = {k: row.get(k, "") for k in fieldnames}
+                writer.writerow(filtered_row)
         log(f"✓ CSV-Datei gespeichert: {filename}", log_widget)
         messagebox.showinfo("Erfolg", f"Daten gespeichert in {filename}")
 
-class App:
-    def __init__(self, root):
-        self.root = root
-        root.title("Modbus Wireless Exporter")
-        root.geometry("600x500")
+def on_start():
+    ip = ip_entry.get()
+    if not ip:
+        messagebox.showerror("Fehler", "Bitte IP-Adresse eingeben.")
+        return
+    log_text.delete(1.0, tk.END)
+    log(f"Starte Verbindung zu {ip}...", log_text)
+    data = collect_data(ip, log_text)
+    if data:
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".csv", filetypes=[("CSV-Dateien", "*.csv")]
+        )
+        if file_path:
+            save_csv(data, file_path, log_text)
 
-        tk.Label(root, text="PanelServer IP-Adresse:").pack(pady=5)
-        self.ip_entry = tk.Entry(root, width=30)
-        self.ip_entry.pack()
+# GUI
+root = tk.Tk()
+root.title("Modbus Export Tool")
 
-        self.log_box = scrolledtext.ScrolledText(root, width=80, height=25)
-        self.log_box.pack(padx=10, pady=10)
+frame = ttk.Frame(root, padding=10)
+frame.grid()
 
-        tk.Button(root, text="Abfragen & Exportieren", command=self.start).pack(pady=10)
+ttk.Label(frame, text="PanelServer IP-Adresse:").grid(row=0, column=0, sticky="w")
+ip_entry = ttk.Entry(frame, width=20)
+ip_entry.grid(row=0, column=1)
+ip_entry.insert(0, "10.0.1.110")
 
-    def start(self):
-        ip = self.ip_entry.get().strip()
-        if not ip:
-            messagebox.showwarning("Eingabe fehlt", "Bitte IP-Adresse eingeben.")
-            return
-        self.log_box.delete(1.0, tk.END)
-        run_query(ip, self.log_box)
+start_btn = ttk.Button(frame, text="Start", command=on_start)
+start_btn.grid(row=0, column=2, padx=5)
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = App(root)
-    root.mainloop()
+log_text = tk.Text(frame, width=100, height=30)
+log_text.grid(row=1, column=0, columnspan=3, pady=10)
+
+root.mainloop()
