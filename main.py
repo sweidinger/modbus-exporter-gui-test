@@ -23,17 +23,21 @@ def decode_uint64(registers):
     return str(result)
 
 def get_device_ids(client, log):
-    log("→ Testweise: Dump von Registern 500–1020")
-    try:
-        result = client.read_holding_registers(500, 60, unit=PANELSERVER_UNIT_ID)
-        if not result.isError():
-            for i, reg in enumerate(result.registers):
-                log(f"  Reg {500+i}: {reg}")
-        else:
-            log("❌ Fehler beim Lesen der Register.")
-    except Exception as e:
-        log(f"❌ Ausnahme beim Register-Dump: {e}")
-    return []
+    ids = []
+    log("→ Suche DeviceIDs in alternativen Registern (509, 514, 519, ...)")
+    for reg in range(509, 560, 5):
+        try:
+            res = client.read_holding_registers(reg, 1, unit=PANELSERVER_UNIT_ID)
+            if not res.isError():
+                val = res.registers[0]
+                if val not in (0, 0xFFFF):
+                    ids.append(val)
+                    log(f"✓ Reg {reg}: DeviceID {val}")
+        except Exception as e:
+            log(f"⚠ Fehler bei Reg {reg}: {e}")
+    if not ids:
+        log("⚠ Keine DeviceIDs gefunden in alternativen Registern.")
+    return ids
     
 def read_device_data(client, device_id, log):
     data = {"DeviceID": device_id}
