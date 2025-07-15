@@ -14,6 +14,12 @@ REGISTERS_COMMON = {
     "Raw_31039": (31039, 1, "uint"),
 }
 
+REGISTERS_CL110 = {
+    "SerialNumber": (31027, 10, "ascii"),
+    "RFID": (31048, 4, "ascii"),
+    "ProductModel": (31020, 4, "ascii"),
+}
+
 def decode_ascii(registers):
     return ''.join(chr((r >> 8) & 0xFF) + chr(r & 0xFF) for r in registers).strip('\x00')
 
@@ -40,6 +46,8 @@ def get_device_ids(client, log):
 def read_device_data(client, device_id, log):
     data = {"DeviceID": device_id}
     log(f"→ Lese Daten von Device {device_id}")
+    device_name = ""
+
     for key, (reg, count, dtype) in REGISTERS_COMMON.items():
         try:
             res = client.read_holding_registers(reg, count, unit=device_id)
@@ -47,21 +55,40 @@ def read_device_data(client, device_id, log):
                 data[key] = "ERROR"
                 log(f"  ⚠ {key}: Fehler beim Lesen")
             else:
-                if dtype == "ascii":
-                    data[key] = decode_ascii(res.registers)
-                elif dtype == "uint":
-                    data[key] = decode_uint(res.registers)
-                log(f"  ✓ {key}: {data[key]}")
+                val = decode_ascii(res.registers) if dtype == "ascii" else decode_uint(res.registers)
+                data[key] = val
+                log(f"  ✓ {key}: {val}")
+                if key == "DeviceName":
+                    device_name = val.upper()
         except Exception as e:
             data[key] = "ERROR"
             log(f"  ⚠ {key}: Ausnahmefehler: {e}")
+
+    # Gerätetyp-spezifisch erweitern
+    if device_name == "CL110":
+        for key, (reg, count, dtype) in REGISTERS_CL110.items():
+            try:
+                res = client.read_holding_registers(reg, count, unit=device_id)
+                if res.isError():
+                    data[key] = "ERROR"
+                    log(f"  ⚠ {key}: Fehler beim Lesen")
+                else:
+                    val = decode_ascii(res.registers) if dtype == "ascii" else decode_uint(res.registers)
+                    data[key] = val
+                    log(f"  ✓ {key}: {val}")
+            except Exception as e:
+                data[key] = "ERROR"
+                log(f"  ⚠ {key}: Ausnahmefehler: {e}")
+    else:
+        log(f"  ⚠ Gerätetyp '{device_name}' nicht unterstützt für Detailabfrage")
+
     return data
 
 class App:
     def __init__(self, root):
         self.root = root
         root.title("Modbus Wireless Exporter")
-        root.geometry("750x500")
+        root.geometry("800x550")
 
         tk.Label(root, text="PanelServer IP-Adresse:").pack(pady=5)
         self.ip_entry = tk.Entry(root, width=30)
@@ -70,7 +97,7 @@ class App:
         tk.Button(root, text="Abfragen & Exportieren", command=self.start).pack(pady=10)
 
         tk.Label(root, text="Debug Log:").pack()
-        self.log_box = scrolledtext.ScrolledText(root, height=20, width=100)
+        self.log_box = scrolledtext.ScrolledText(root, height=25, width=100)
         self.log_box.pack(padx=10, pady=5)
 
     def log(self, message):
@@ -108,8 +135,9 @@ class App:
         client.close()
         filename = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
         if filename:
+            all_fields = sorted(set(k for d in data for k in d.keys()))
             with open(filename, "w", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=["DeviceID"] + list(REGISTERS_COMMON.keys()))
+                writer = csv.DictWriter(f, fieldnames=all_fields)
                 writer.writeheader()
                 writer.writerows(data)
             self.log(f"✓ CSV-Datei gespeichert: {filename}")
