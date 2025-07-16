@@ -11,6 +11,7 @@ import time
 import csv
 import os
 from datetime import datetime
+import struct
 
 # Try to import modbus library
 try:
@@ -36,6 +37,13 @@ def decode_ascii(registers):
         chr((reg >> 8) & 0xFF) + chr(reg & 0xFF) for reg in registers
     ).split("\x00")[0].strip()
 
+def decode_float32(registers):
+    """Decode Float32 value from two Modbus registers."""
+    if registers and len(registers) == 2:
+        combined = (registers[0] << 16) | registers[1]
+        return struct.unpack('!f', struct.pack('!I', combined))[0]
+    return None
+
 # Original read_registers function
 def read_registers(client, device_id, address, count, log_widget=None):
     try:
@@ -53,6 +61,47 @@ def read_registers(client, device_id, address, count, log_widget=None):
         if log_widget:
             log_widget.log_message(f"⚠ Fehler beim Lesen der Register {address}: {e}")
         return None
+
+def read_enhanced_diagnostics(client, device_id, device_type, log_widget=None):
+    """Read enhanced diagnostics for TH110 and CL110 devices"""
+    diagnostics = {}
+    # Define additional registers and their processing
+    enhanced_registers = [
+        (31144, 1, "RF Communication Validity", "BITMAP"),
+        (31145, 1, "Communication Status", "BITMAP"),
+        (31151, 2, "Gateway PER", "Float32"),
+        (31153, 2, "RSSI", "Float32"),
+        (31155, 1, "LQI", "UINT16"),
+        (31156, 2, "PER Max", "Float32"),
+        (31158, 2, "RSSI Min", "Float32"),
+        (31160, 1, "LQI Min", "UINT16")
+    ]
+    
+    # Add CL110-specific Battery Voltage register
+    if device_type == "CL110":
+        enhanced_registers.append((3315, 2, "Battery Voltage", "Float32"))
+    
+    for addr, count, field_name, field_type in enhanced_registers:
+        regs = read_registers(client, device_id, addr, count, log_widget)
+        if regs:
+            value = None
+            if field_type == "Float32":
+                value = round(decode_float32(regs), 2)
+            elif field_type == "UINT16":
+                value = regs[0] if regs else None
+            elif field_type == "BITMAP":
+                value = regs[0] if regs else None
+            # Add more type handlers if needed
+            
+            diagnostics[field_name] = value
+            if log_widget:
+                log_widget.log_message(f"  ✓ {field_name}: {value}")
+        else:
+            diagnostics[field_name] = "N/A"
+            if log_widget:
+                log_widget.log_message(f"  ⚠ {field_name}: Error reading")
+    
+    return diagnostics
 
 # Original get_device_ids function
 def get_device_ids(client, log_widget=None):
@@ -145,6 +194,15 @@ def collect_data(ip, log_widget=None):
             if log_widget:
                 log_widget.log_message("  ⚠ SerialNumber: Fehler beim Lesen")
 
+        # Enhanced Diagnostics if enabled
+        if hasattr(log_widget, 'enhanced_diagnostics_var') and log_widget.enhanced_diagnostics_var.get() and device_type in ["TH110", "CL110"]:
+            enhanced_diagnostics = read_enhanced_diagnostics(client, device_id, device_type, log_widget)
+            device_data["EnhancedDiagnostics"] = enhanced_diagnostics
+            if log_widget:
+                log_widget.log_message(f"→ Enhanced Diagnostics for {device_type}: {enhanced_diagnostics}")
+        else:
+            device_data["EnhancedDiagnostics"] = {}
+
         # Product Model (nur Debug) → 31106
         pm_regs = read_registers(client, device_id, 31106, 8, log_widget)
         if pm_regs:
@@ -171,6 +229,7 @@ class ModbusExporterGUI:
         self.export_thread = None
         self.csv_var = tk.BooleanVar(value=True)
         self.excel_var = tk.BooleanVar(value=EXCEL_AVAILABLE)
+        self.enhanced_diagnostics_var = tk.BooleanVar(value=False)
         
         # Setup GUI
         self.setup_gui()
@@ -253,6 +312,13 @@ class ModbusExporterGUI:
                                  state='normal' if EXCEL_AVAILABLE else 'disabled')
         excel_cb.pack(pady=2)
         
+        # Enhanced Diagnostics Checkbox
+        enhanced_diag_cb = tk.Checkbutton(export_frame, text="Enable Enhanced Diagnostics",
+                                       variable=self.enhanced_diagnostics_var, font=("Arial", 10),
+                                       bg='#cccccc', fg='#000000', activeforeground='#000000',
+                                       activebackground='#aaaaaa')
+        enhanced_diag_cb.pack(pady=5)
+
         # Control Buttons
         button_frame = tk.Frame(self.root, bg='#333333')
         button_frame.pack(pady=20)
@@ -455,6 +521,26 @@ class ModbusExporterGUI:
                 self.start_btn.config(state='normal')
                 self.stop_btn.config(state='disabled')
 
+    def flatten_diagnostics(self, data):
+        """Flatten the enhanced diagnostics into individual fields for export"""
+        headers = set()
+        flattened_data = []
+        
+        for device in data:
+            flat_device = {
+                "DeviceID": device.get("DeviceID", ""),
+                "DeviceType": device.get("DeviceType", ""),
+                "RFID": device.get("RFID", ""),
+                "SerialNumber": device.get("SerialNumber", "")
+            }
+            diagnostics = device.get("EnhancedDiagnostics", {})
+            for key, value in diagnostics.items():
+                flat_device[key] = value
+                headers.add(key)
+            flattened_data.append(flat_device)
+        
+        return list(sorted(headers)), flattened_data
+
     def _save_original_data(self, data):
         """Save data in the original format"""
         # Ask user for file location
@@ -471,11 +557,12 @@ class ModbusExporterGUI:
         # Save as CSV
         if self.csv_var.get():
             filename = base_file + ".csv"
-            fieldnames = ["DeviceID", "DeviceType", "RFID", "SerialNumber"]
+            header_extras, flattened_data = self.flatten_diagnostics(data)
+            fieldnames = ["DeviceID", "DeviceType", "RFID", "SerialNumber"] + header_extras
             with open(filename, "w", newline="") as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
-                for row in data:
+                for row in flattened_data:
                     writer.writerow({k: row.get(k, "") for k in fieldnames})
             self.log_message(f"✓ CSV-Datei gespeichert: {filename}")
         
@@ -485,9 +572,10 @@ class ModbusExporterGUI:
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = "Modbus Export"
-            headers = ["DeviceID", "DeviceType", "RFID", "SerialNumber"]
+            header_extras, flattened_data = self.flatten_diagnostics(data)
+            headers = ["DeviceID", "DeviceType", "RFID", "SerialNumber"] + header_extras
             ws.append(headers)
-            for row in data:
+            for row in flattened_data:
                 ws.append([row.get(h, "") for h in headers])
             wb.save(filename)
             self.log_message(f"✓ Excel-Datei gespeichert: {filename}")
