@@ -1,1 +1,25 @@
-pymodbus==2.5.3
+# Core application dependencies
+pymodbus>=3.0.0
+openpyxl>=3.1.0
+
+# GUI framework (already included in Python, but explicit for clarity)
+# tkinter is built-in to Python on Windows
+
+# Windows executable building
+pyinstaller>=5.0
+auto-py-to-exe>=2.0.0
+
+# Additional build tools that might be needed
+setuptools>=65.0
+wheel>=0.38.0
+pip>=22.0
+
+# Optional: For better Windows integration
+pywin32>=306; sys_platform == "win32"
+
+# Development and testing (optional)
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# For GitHub Actions workflow
+requests>=2.28.0
