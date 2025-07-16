@@ -10,7 +10,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-latest]
+        os: [windows-latest, macos-latest]
 
     steps:
       - name: Checkout code
@@ -27,7 +27,13 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build with PyInstaller
+      - name: Build with PyInstaller (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          pyinstaller modbus_exporter_windows.spec
+
+      - name: Build with PyInstaller (macOS)
+        if: matrix.os == 'macos-latest'
         run: |
           pyinstaller modbus_exporter.spec
 
