@@ -62,10 +62,150 @@ def read_registers(client, device_id, address, count, log_widget=None):
             log_widget.log_message(f"⚠ Fehler beim Lesen der Register {address}: {e}")
         return None
 
+def get_signal_quality(lqi, per):
+    """Calculate signal quality level based on LQI and PER values
+    Based on Schneider Electric EcoStruxure Panel Server documentation
+    
+    Signal quality matrix:
+                    LQI < 30    30 ≤ LQI < 60    60 ≤ LQI
+    PER > 30%         Weak         Weak          Fair
+    10% < PER ≤ 30%   Weak         Fair          Good
+    PER ≤ 10%         Fair         Good          Excellent
+    """
+    # Handle invalid or missing values
+    if lqi is None or per is None:
+        return "Unknown"
+    
+    try:
+        lqi_value = float(lqi)
+        per_value = float(per)
+        
+        # Handle NaN values
+        if str(lqi_value).lower() == 'nan' or str(per_value).lower() == 'nan':
+            return "Unknown"
+        
+        # Apply the signal quality matrix
+        if per_value > 30:
+            if lqi_value < 30:
+                return "Weak"
+            elif lqi_value < 60:
+                return "Weak"
+            else:  # lqi_value >= 60
+                return "Fair"
+        elif per_value > 10:
+            if lqi_value < 30:
+                return "Weak"
+            elif lqi_value < 60:
+                return "Fair"
+            else:  # lqi_value >= 60
+                return "Good"
+        else:  # per_value <= 10
+            if lqi_value < 30:
+                return "Fair"
+            elif lqi_value < 60:
+                return "Good"
+            else:  # lqi_value >= 60
+                return "Excellent"
+                
+    except (ValueError, TypeError):
+        return "Unknown"
+
+def decode_heattag_alarm_type(value):
+    """Decode HeatTag alarm type value to human-readable string"""
+    if value is None or value == "N/A":
+        return "N/A"
+    
+    try:
+        val = int(value)
+        if val == 0:
+            return "No alarm"
+        elif 1 <= val <= 15:
+            return "Low level alarm"
+        elif 16 <= val <= 93:
+            return "Medium level alarm"
+        elif val == 99:
+            return "Test alarm"
+        elif 94 <= val <= 190:
+            return "High level alarm"
+        else:
+            return f"Unknown ({val})"
+    except (ValueError, TypeError):
+        return f"Invalid ({value})"
+
+def decode_heattag_alarm_level(value):
+    """Decode HeatTag alarm level value to human-readable string"""
+    if value is None or value == "N/A":
+        return "N/A"
+    
+    try:
+        val = int(value)
+        if val == 0:
+            return "No alarm"
+        elif val == 1:
+            return "Low level alarm"
+        elif val == 2:
+            return "Medium level alarm"
+        elif val == 3:
+            return "High level alarm"
+        else:
+            return f"Unknown ({val})"
+    except (ValueError, TypeError):
+        return f"Invalid ({value})"
+
+def decode_heattag_operation_mode(value):
+    """Decode HeatTag operation mode value to human-readable string"""
+    if value is None or value == "N/A":
+        return "N/A"
+    
+    try:
+        val = int(value)
+        if val == 0:
+            return "Test mode (0-30 min after power on)"
+        elif val == 1:
+            return "Auto-learning mode (30 min-8 hrs after power on)"
+        elif val == 2:
+            return "Normal operation mode (>8 hrs after power on)"
+        else:
+            return f"Unknown ({val})"
+    except (ValueError, TypeError):
+        return f"Invalid ({value})"
+
+def decode_communication_status(value):
+    """Decode Communication Status value to human-readable string"""
+    if value is None or value == "N/A":
+        return "N/A"
+    
+    try:
+        val = int(value)
+        if val == 0:
+            return "Communication loss"
+        elif val == 1:
+            return "Communication OK"
+        else:
+            return f"Unknown ({val})"
+    except (ValueError, TypeError):
+        return f"Invalid ({value})"
+
+def decode_rf_communication_validity(value):
+    """Decode RF Communication Validity value to human-readable string"""
+    if value is None or value == "N/A":
+        return "N/A"
+    
+    try:
+        val = int(value)
+        if val == 0:
+            return "Invalid"
+        elif val == 1:
+            return "Valid"
+        else:
+            return f"Unknown ({val})"
+    except (ValueError, TypeError):
+        return f"Invalid ({value})"
+
 def read_enhanced_diagnostics(client, device_id, device_type, log_widget=None):
-    """Read enhanced diagnostics for TH110 and CL110 devices"""
+    """Read enhanced diagnostics for TH110, CL110, and HeatTag devices"""
     diagnostics = {}
-    # Define additional registers and their processing
+    # Define common registers for all device types
     enhanced_registers = [
         (31144, 1, "RF Communication Validity", "BITMAP"),
         (31145, 1, "Communication Status", "BITMAP"),
@@ -77,9 +217,16 @@ def read_enhanced_diagnostics(client, device_id, device_type, log_widget=None):
         (31160, 1, "LQI Min", "UINT16")
     ]
     
-    # Add CL110-specific Battery Voltage register
+    # Add device-specific registers
     if device_type == "CL110":
         enhanced_registers.append((3315, 2, "Battery Voltage", "Float32"))
+    elif device_type == "HeatTag":
+        # HeatTag specific registers - only for HeatTag devices
+        enhanced_registers.extend([
+            (3321, 1, "HeatTag Alarm Type", "UINT16"),
+            (3322, 1, "HeatTag Alarm Level", "UINT16"),
+            (31175, 1, "HeatTag Operation Mode", "UINT16")
+        ])
     
     for addr, count, field_name, field_type in enhanced_registers:
         regs = read_registers(client, device_id, addr, count, log_widget)
@@ -100,6 +247,14 @@ def read_enhanced_diagnostics(client, device_id, device_type, log_widget=None):
             diagnostics[field_name] = "N/A"
             if log_widget:
                 log_widget.log_message(f"  ⚠ {field_name}: Error reading")
+    
+    # Calculate Signal Quality based on LQI and PER
+    lqi_value = diagnostics.get("LQI")
+    per_value = diagnostics.get("Gateway PER")
+    signal_quality = get_signal_quality(lqi_value, per_value)
+    diagnostics["Signal Quality"] = signal_quality
+    if log_widget:
+        log_widget.log_message(f"  ✓ Signal Quality: {signal_quality}")
     
     return diagnostics
 
@@ -167,6 +322,8 @@ def collect_data(ip, log_widget=None):
             device_type = "CL110"
         elif ref == "EMS59440":
             device_type = "TH110"
+        elif ref == "SMT10020":
+            device_type = "HeatTag"
         else:
             device_type = "Unknown"
         device_data["DeviceType"] = device_type
@@ -193,9 +350,35 @@ def collect_data(ip, log_widget=None):
         else:
             if log_widget:
                 log_widget.log_message("  ⚠ SerialNumber: Fehler beim Lesen")
+        
+        # Device Name → 31000 (10 Register, ASCII)
+        device_name_regs = read_registers(client, device_id, 31000, 10, log_widget)
+        if device_name_regs:
+            device_name = decode_ascii(device_name_regs)
+            if log_widget:
+                log_widget.log_message(f"  📦 DeviceName (Reg 31000, 10): {device_name_regs}")
+                log_widget.log_message(f"  ✓ DeviceName: {device_name}")
+            device_data["DeviceName"] = device_name
+        else:
+            if log_widget:
+                log_widget.log_message("  ⚠ DeviceName: Fehler beim Lesen")
+            device_data["DeviceName"] = ""
+        
+        # Device Label → 31010 (3 Register, ASCII)
+        device_label_regs = read_registers(client, device_id, 31010, 3, log_widget)
+        if device_label_regs:
+            device_label = decode_ascii(device_label_regs)
+            if log_widget:
+                log_widget.log_message(f"  📦 DeviceLabel (Reg 31010, 3): {device_label_regs}")
+                log_widget.log_message(f"  ✓ DeviceLabel: {device_label}")
+            device_data["DeviceLabel"] = device_label
+        else:
+            if log_widget:
+                log_widget.log_message("  ⚠ DeviceLabel: Fehler beim Lesen")
+            device_data["DeviceLabel"] = ""
 
         # Enhanced Diagnostics if enabled
-        if hasattr(log_widget, 'enhanced_diagnostics_var') and log_widget.enhanced_diagnostics_var.get() and device_type in ["TH110", "CL110"]:
+        if hasattr(log_widget, 'enhanced_diagnostics_var') and log_widget.enhanced_diagnostics_var.get() and device_type in ["TH110", "CL110", "HeatTag"]:
             enhanced_diagnostics = read_enhanced_diagnostics(client, device_id, device_type, log_widget)
             device_data["EnhancedDiagnostics"] = enhanced_diagnostics
             if log_widget:
@@ -523,23 +706,78 @@ class ModbusExporterGUI:
 
     def flatten_diagnostics(self, data):
         """Flatten the enhanced diagnostics into individual fields for export"""
-        headers = set()
+        # Define the order of common diagnostic fields
+        common_fields = [
+            "Battery Voltage", "RF Communication Validity", "Communication Status", 
+            "Gateway PER", "RSSI", "LQI", "PER Max", "RSSI Min", "LQI Min", "Signal Quality"
+        ]
+        
+        # Define device-specific fields
+        device_specific_fields = {
+            "HeatTag": ["HeatTag Alarm Type", "HeatTag Alarm Level", "HeatTag Operation Mode"]
+        }
+        
+        # Collect all headers from all devices
+        all_headers = set()
         flattened_data = []
         
         for device in data:
+            device_type = device.get("DeviceType", "")
             flat_device = {
                 "DeviceID": device.get("DeviceID", ""),
-                "DeviceType": device.get("DeviceType", ""),
+                "DeviceType": device_type,
                 "RFID": device.get("RFID", ""),
-                "SerialNumber": device.get("SerialNumber", "")
+                "SerialNumber": device.get("SerialNumber", ""),
+                "DeviceName": device.get("DeviceName", ""),
+                "DeviceLabel": device.get("DeviceLabel", "")
             }
+            
             diagnostics = device.get("EnhancedDiagnostics", {})
-            for key, value in diagnostics.items():
-                flat_device[key] = value
-                headers.add(key)
+            
+            # Add common fields for all devices (if they exist)
+            for field in common_fields:
+                if field in diagnostics:
+                    value = diagnostics[field]
+                    # Apply decoders for better readability
+                    if field == "Communication Status":
+                        value = decode_communication_status(value)
+                    elif field == "RF Communication Validity":
+                        value = decode_rf_communication_validity(value)
+                    flat_device[field] = value
+                    all_headers.add(field)
+            
+            # Add device-specific fields only for the appropriate device types
+            for dev_type, fields in device_specific_fields.items():
+                if device_type == dev_type:
+                    for field in fields:
+                        if field in diagnostics:
+                            value = diagnostics[field]
+                            # Apply HeatTag decoders for better readability
+                            if device_type == "HeatTag":
+                                if field == "HeatTag Alarm Type":
+                                    value = decode_heattag_alarm_type(value)
+                                elif field == "HeatTag Alarm Level":
+                                    value = decode_heattag_alarm_level(value)
+                                elif field == "HeatTag Operation Mode":
+                                    value = decode_heattag_operation_mode(value)
+                            flat_device[field] = value
+                            all_headers.add(field)
+            
             flattened_data.append(flat_device)
         
-        return list(sorted(headers)), flattened_data
+        # Create ordered header list: common fields first, then device-specific fields
+        ordered_headers = []
+        for field in common_fields:
+            if field in all_headers:
+                ordered_headers.append(field)
+        
+        # Add device-specific fields in order
+        for dev_type, fields in device_specific_fields.items():
+            for field in fields:
+                if field in all_headers:
+                    ordered_headers.append(field)
+        
+        return ordered_headers, flattened_data
 
     def _save_original_data(self, data):
         """Save data in the original format"""
@@ -558,7 +796,7 @@ class ModbusExporterGUI:
         if self.csv_var.get():
             filename = base_file + ".csv"
             header_extras, flattened_data = self.flatten_diagnostics(data)
-            fieldnames = ["DeviceID", "DeviceType", "RFID", "SerialNumber"] + header_extras
+            fieldnames = ["DeviceID", "DeviceType", "RFID", "SerialNumber", "DeviceName", "DeviceLabel"] + header_extras
             with open(filename, "w", newline="") as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
@@ -573,10 +811,78 @@ class ModbusExporterGUI:
             ws = wb.active
             ws.title = "Modbus Export"
             header_extras, flattened_data = self.flatten_diagnostics(data)
-            headers = ["DeviceID", "DeviceType", "RFID", "SerialNumber"] + header_extras
+            headers = ["DeviceID", "DeviceType", "RFID", "SerialNumber", "DeviceName", "DeviceLabel"] + header_extras
+            
+            # Add headers
             ws.append(headers)
+            
+            # Add data rows
             for row in flattened_data:
                 ws.append([row.get(h, "") for h in headers])
+            
+            # Apply conditional formatting for Signal Quality if present
+            if "Signal Quality" in headers:
+                signal_quality_col = headers.index("Signal Quality") + 1  # Excel columns are 1-indexed
+                signal_quality_col_letter = openpyxl.utils.get_column_letter(signal_quality_col)
+                
+                # Define color fills for different signal quality levels
+                from openpyxl.styles import PatternFill
+                excellent_fill = PatternFill(start_color="00FF00", end_color="00FF00", fill_type="solid")  # Green
+                good_fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")      # Light Green
+                fair_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")      # Yellow
+                weak_fill = PatternFill(start_color="FF6600", end_color="FF6600", fill_type="solid")      # Orange
+                very_weak_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid") # Red
+                unknown_fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")   # Gray
+                
+                # Apply formatting to each cell in the Signal Quality column
+                for row_num in range(2, len(flattened_data) + 2):  # Start from row 2 (after header)
+                    cell = ws[f"{signal_quality_col_letter}{row_num}"]
+                    signal_quality_value = str(cell.value).strip() if cell.value else ""
+                    
+                    if signal_quality_value == "Excellent":
+                        cell.fill = excellent_fill
+                    elif signal_quality_value == "Good":
+                        cell.fill = good_fill
+                    elif signal_quality_value == "Fair":
+                        cell.fill = fair_fill
+                    elif signal_quality_value == "Weak":
+                        cell.fill = weak_fill
+                    elif signal_quality_value == "Very Weak":
+                        cell.fill = very_weak_fill
+                    elif signal_quality_value == "Unknown" or signal_quality_value == "":
+                        cell.fill = unknown_fill
+            
+            # Apply conditional formatting for RSSI if present
+            if "RSSI" in headers:
+                rssi_col = headers.index("RSSI") + 1  # Excel columns are 1-indexed
+                rssi_col_letter = openpyxl.utils.get_column_letter(rssi_col)
+                
+                # Define color fills for different RSSI power levels
+                from openpyxl.styles import PatternFill
+                rssi_good_fill = PatternFill(start_color="00FF00", end_color="00FF00", fill_type="solid")    # Green (0 to -65 dBm)
+                rssi_average_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid") # Yellow (-65 to -75 dBm)
+                rssi_poor_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")    # Red (< -75 dBm)
+                rssi_unknown_fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid") # Gray (Unknown/NaN)
+                
+                # Apply formatting to each cell in the RSSI column
+                for row_num in range(2, len(flattened_data) + 2):  # Start from row 2 (after header)
+                    cell = ws[f"{rssi_col_letter}{row_num}"]
+                    rssi_value = str(cell.value).strip() if cell.value else ""
+                    
+                    try:
+                        if rssi_value and rssi_value.lower() != 'nan':
+                            rssi_float = float(rssi_value)
+                            if rssi_float >= -65:  # 0 to -65 dBm = Good
+                                cell.fill = rssi_good_fill
+                            elif rssi_float >= -75:  # -65 to -75 dBm = Average
+                                cell.fill = rssi_average_fill
+                            else:  # < -75 dBm = Poor
+                                cell.fill = rssi_poor_fill
+                        else:
+                            cell.fill = rssi_unknown_fill  # NaN or empty values
+                    except (ValueError, TypeError):
+                        cell.fill = rssi_unknown_fill  # Invalid values
+            
             wb.save(filename)
             self.log_message(f"✓ Excel-Datei gespeichert: {filename}")
 
