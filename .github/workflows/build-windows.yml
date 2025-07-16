@@ -27,10 +27,10 @@ jobs:
     
     - name: Build Windows executable
       run: |
-        pyinstaller --onefile --windowed --name="PAS Wireless Device Exporter" --icon=icon.ico main.py
+        pyinstaller --onefile --windowed --name="PAS Wireless Device Exporter" main.py
     
     - name: Upload Windows executable
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: pas-wireless-device-exporter-windows
         path: "dist/PAS Wireless Device Exporter.exe"
@@ -79,7 +79,7 @@ jobs:
         pyinstaller --onefile --name="PAS Wireless Device Exporter - Linux" main.py
     
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: modbus-exporter-${{ matrix.os }}
         path: dist/
