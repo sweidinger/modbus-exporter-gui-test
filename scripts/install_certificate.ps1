@@ -60,6 +60,12 @@ try {
 $storeLocation = if ($isAdmin) { "LocalMachine" } else { "CurrentUser" }
 Write-Host "📁 Installing to: $storeLocation\TrustedPublisher" -ForegroundColor Cyan
 
+if (-not $isAdmin) {
+    Write-Host "ℹ️  Installing to user certificate store (no admin rights detected)" -ForegroundColor Yellow
+    Write-Host "Note: This will trust the application for your user account only." -ForegroundColor Yellow
+    Write-Host ""
+}
+
 # Install the certificate
 try {
     Write-Host "🔄 Installing certificate..." -ForegroundColor Yellow
@@ -68,7 +74,12 @@ try {
     
     Write-Host "✅ Certificate installed successfully!" -ForegroundColor Green
     Write-Host ""
-    Write-Host "🎉 The Modbus Data Exporter is now trusted on this machine!" -ForegroundColor Green
+    if ($isAdmin) {
+        Write-Host "🎉 The Modbus Data Exporter is now trusted system-wide!" -ForegroundColor Green
+    } else {
+        Write-Host "🎉 The Modbus Data Exporter is now trusted for your user account!" -ForegroundColor Green
+        Write-Host "⚠️  Note: Other users on this machine will still see security warnings." -ForegroundColor Yellow
+    }
     Write-Host "You can now run the application without security warnings." -ForegroundColor Green
     
 } catch {
