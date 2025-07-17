@@ -32,18 +32,27 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
+          pip install pymodbus openpyxl pyinstaller
 
       - name: Build with PyInstaller (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          pyinstaller modbus_exporter_windows.spec
+          if [ -f "modbus_exporter_windows.spec" ]; then
+            pyinstaller modbus_exporter_windows.spec
+          else
+            pyinstaller --onefile --windowed --name modbus_exporter main.py
+          fi
+        shell: bash
 
       - name: Build with PyInstaller (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          pyinstaller modbus_exporter.spec
+          if [ -f "modbus_exporter.spec" ]; then
+            pyinstaller modbus_exporter.spec
+          else
+            pyinstaller --onefile --windowed --name modbus_exporter main.py
+          fi
+        shell: bash
 
       - name: Rename executables with version (Windows)
         if: matrix.os == 'windows-latest'
@@ -111,13 +120,12 @@ jobs:
           cd ..
 
       - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{ env.VERSION }}
-          release_name: Modbus Data Exporter v${{ env.VERSION }}
+          name: Modbus Data Exporter v${{ env.VERSION }}
           body: |
             ## Modbus Data Exporter v${{ env.VERSION }}
             
@@ -142,25 +150,8 @@ jobs:
             3. Run the executable
             
             **Note**: On macOS, you may need to right-click and select "Open" to bypass security warnings.
+          files: |
+            modbus_exporter_v${{ env.VERSION }}_windows.zip
+            modbus_exporter_v${{ env.VERSION }}_macos.zip
           draft: false
           prerelease: false
-
-      - name: Upload Windows Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./modbus_exporter_v${{ env.VERSION }}_windows.zip
-          asset_name: modbus_exporter_v${{ env.VERSION }}_windows.zip
-          asset_content_type: application/zip
-
-      - name: Upload macOS Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./modbus_exporter_v${{ env.VERSION }}_macos.zip
-          asset_name: modbus_exporter_v${{ env.VERSION }}_macos.zip
-          asset_content_type: application/zip
