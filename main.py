@@ -472,6 +472,9 @@ class ModbusExporterGUI:
         right_column = tk.Frame(main_container, bg='#333333')
         right_column.grid(row=0, column=1, sticky='nsew', padx=(5, 0))
         
+        # Adjust weight of row containing checkboxes to reduce resizing
+        right_column.grid_rowconfigure(1, weight=1)  # Ensure stability of Live View
+        
         # === LEFT COLUMN CONTENT ===
         
         # IP Address Section
@@ -640,7 +643,7 @@ class ModbusExporterGUI:
         
         # Column Visibility Controls
         columns_frame = tk.Frame(live_diag_header, bg='#cccccc')
-        columns_frame.pack(pady=5)
+        columns_frame.pack(pady=5, fill='x')  # Ensure consistent width for stability
         
         columns_label = tk.Label(columns_frame, text="Visible Columns:", 
                                 font=("Arial", 10, "bold"), bg='#cccccc', fg='#000000')
@@ -682,6 +685,9 @@ class ModbusExporterGUI:
         # Live Diagnostics Data Frame
         live_data_frame = tk.Frame(right_column, bg='#cccccc', relief='raised', bd=2)
         live_data_frame.pack(fill='both', expand=True, pady=5)
+        
+        # Set a fixed width for the live data frame to prevent resizing
+        live_data_frame.pack_propagate(False)
         
         # Live data display tree with improved styling
         self.live_data_tree = ttk.Treeview(live_data_frame, columns=self.live_data_tree_columns, show='headings')
@@ -1571,6 +1577,9 @@ class ModbusExporterGUI:
 
     def update_column_visibility(self):
         """Update which columns are visible in the live diagnostics table"""
+        # Prevent GUI updates during column reconfiguration
+        self.root.update_idletasks()
+        
         # Get list of visible columns
         visible_columns = []
         for col in self.live_data_tree_columns:
@@ -1608,8 +1617,11 @@ class ModbusExporterGUI:
             # The data will be refreshed on the next update cycle
             pass
         
-        # Auto-adjust column widths
+        # Auto-adjust column widths without affecting overall layout
         self._auto_adjust_column_widths()
+        
+        # Ensure the main window geometry remains stable
+        self.root.update_idletasks()
 
     def on_closing(self):
         """Handle application closing"""
