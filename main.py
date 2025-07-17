@@ -5,7 +5,7 @@ Exports Modbus device data to CSV or Excel format
 """
 
 # Version information
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 __release_date__ = "2025-01-17"
 __author__ = "Stefan Weidinger"
 
@@ -18,6 +18,10 @@ import os
 from datetime import datetime
 import struct
 import json
+import weakref
+from collections import OrderedDict
+import hashlib
+from functools import lru_cache
 
 # Try to import modbus library
 try:
@@ -37,11 +41,130 @@ try:
 except ImportError:
     EXCEL_AVAILABLE = False
 
-# Original decode_ascii function
-def decode_ascii(registers):
+# Connection Pool Manager
+class ConnectionPool:
+    def __init__(self, max_connections=5):
+        self.pool = {}
+        self.max_connections = max_connections
+        self.lock = threading.Lock()
+    
+    def get_connection(self, ip, port=502):
+        """Get a connection from the pool or create a new one"""
+        with self.lock:
+            key = f"{ip}:{port}"
+            if key in self.pool:
+                client = self.pool[key]
+                # Check if connection is still valid
+                if hasattr(client, 'is_socket_open') and client.is_socket_open():
+                    return client
+                else:
+                    # Remove invalid connection
+                    del self.pool[key]
+            
+            # Create new connection if pool not full
+            if len(self.pool) < self.max_connections:
+                client = ModbusClient(ip, port=port)
+                if client.connect():
+                    # Store IP for caching purposes
+                    client._cached_ip = ip
+                    self.pool[key] = client
+                    return client
+            return None
+    
+    def close_all(self):
+        """Close all connections in the pool"""
+        with self.lock:
+            for client in self.pool.values():
+                try:
+                    client.close()
+                except:
+                    pass
+            self.pool.clear()
+
+# Memory-efficient data cache
+class DataCache:
+    def __init__(self, max_size=100, ttl=300):  # 5 minutes TTL
+        self.cache = OrderedDict()
+        self.max_size = max_size
+        self.ttl = ttl
+        self.lock = threading.Lock()
+    
+    def _generate_key(self, ip, device_id, register, count):
+        """Generate cache key"""
+        return f"{ip}:{device_id}:{register}:{count}"
+    
+    def get(self, ip, device_id, register, count):
+        """Get cached data if valid"""
+        with self.lock:
+            key = self._generate_key(ip, device_id, register, count)
+            if key in self.cache:
+                data, timestamp = self.cache[key]
+                if time.time() - timestamp < self.ttl:
+                    # Move to end (LRU)
+                    self.cache.move_to_end(key)
+                    return data
+                else:
+                    del self.cache[key]
+            return None
+    
+    def set(self, ip, device_id, register, count, data):
+        """Cache data with timestamp"""
+        with self.lock:
+            key = self._generate_key(ip, device_id, register, count)
+            # Remove oldest if cache is full
+            if len(self.cache) >= self.max_size:
+                self.cache.popitem(last=False)
+            self.cache[key] = (data, time.time())
+    
+    def clear(self):
+        """Clear all cached data"""
+        with self.lock:
+            self.cache.clear()
+
+# Global instances
+connection_pool = ConnectionPool()
+data_cache = DataCache()
+
+# Memory management utilities
+class MemoryManager:
+    def __init__(self):
+        self.weak_refs = set()
+    
+    def add_reference(self, obj):
+        """Add weak reference to track object"""
+        self.weak_refs.add(weakref.ref(obj))
+    
+    def cleanup(self):
+        """Clean up dead references"""
+        self.weak_refs = {ref for ref in self.weak_refs if ref() is not None}
+    
+    def get_memory_usage(self):
+        """Get current memory usage statistics"""
+        import psutil
+        import os
+        try:
+            process = psutil.Process(os.getpid())
+            return process.memory_info().rss / 1024 / 1024  # MB
+        except:
+            return 0
+
+memory_manager = MemoryManager()
+
+# Optimized decode functions with caching
+@lru_cache(maxsize=1000)
+def decode_ascii_tuple(registers_tuple):
+    """Cached ASCII decode function for tuple input"""
+    registers = list(registers_tuple)
     return "".join(
         chr((reg >> 8) & 0xFF) + chr(reg & 0xFF) for reg in registers
     ).split("\x00")[0].strip()
+
+# Wrapper for tuple conversion
+def decode_ascii_cached(registers):
+    """Convert list to tuple for caching"""
+    if registers:
+        return decode_ascii_tuple(tuple(registers))
+    return ""
 
 def decode_float32(registers):
     """Decode Float32 value from two Modbus registers."""
@@ -50,8 +173,14 @@ def decode_float32(registers):
         return struct.unpack('!f', struct.pack('!I', combined))[0]
     return None
 
-# Original read_registers function
+# Optimized read_registers function with caching
 def read_registers(client, device_id, address, count, log_widget=None):
+    # Check cache first
+    ip = getattr(client, '_cached_ip', 'unknown')
+    cached_data = data_cache.get(ip, device_id, address, count)
+    if cached_data is not None:
+        return cached_data
+    
     try:
         # Try newer parameter style first
         try:
@@ -62,6 +191,9 @@ def read_registers(client, device_id, address, count, log_widget=None):
         
         if result.isError():
             raise Exception(f"Modbus-Fehler: {result}")
+        
+        # Cache the result
+        data_cache.set(ip, device_id, address, count, result.registers)
         return result.registers
     except Exception as e:
         if log_widget:
@@ -287,10 +419,11 @@ def get_device_ids(client, log_widget=None):
                 log_widget.log_message(f"- Kein gültiger DeviceID-Wert in Register {addr}")
     return device_ids
 
-# Original collect_data function
+# Optimized collect_data function with connection pooling
 def collect_data(ip, log_widget=None):
-    client = ModbusClient(ip)
-    if not client.connect():
+    # Use connection pool
+    client = connection_pool.get_connection(ip)
+    if not client:
         if log_widget:
             log_widget.log_message("❌ Verbindung fehlgeschlagen.")
         return None
@@ -319,7 +452,7 @@ def collect_data(ip, log_widget=None):
 
         # Commercial Reference → 31060
         ref_regs = read_registers(client, device_id, 31060, 16, log_widget)
-        ref = decode_ascii(ref_regs) if ref_regs else ""
+        ref = decode_ascii_cached(ref_regs) if ref_regs else ""
         if log_widget:
             log_widget.log_message(f"→ Device {device_id} hat Commercial Reference: {ref}")
 
@@ -348,7 +481,7 @@ def collect_data(ip, log_widget=None):
         # Serial Number → 31088 (10 Register, ASCII)
         sn_regs = read_registers(client, device_id, 31088, 10, log_widget)
         if sn_regs:
-            sn = decode_ascii(sn_regs)
+            sn = decode_ascii_cached(sn_regs)
             if log_widget:
                 log_widget.log_message(f"  📦 SerialNumber (Reg 31088, 10): {sn_regs}")
                 log_widget.log_message(f"  ✓ SerialNumber: {sn}")
@@ -360,7 +493,7 @@ def collect_data(ip, log_widget=None):
         # Device Name → 31000 (10 Register, ASCII)
         device_name_regs = read_registers(client, device_id, 31000, 10, log_widget)
         if device_name_regs:
-            device_name = decode_ascii(device_name_regs)
+            device_name = decode_ascii_cached(device_name_regs)
             if log_widget:
                 log_widget.log_message(f"  📦 DeviceName (Reg 31000, 10): {device_name_regs}")
                 log_widget.log_message(f"  ✓ DeviceName: {device_name}")
@@ -373,7 +506,7 @@ def collect_data(ip, log_widget=None):
         # Device Label → 31010 (3 Register, ASCII)
         device_label_regs = read_registers(client, device_id, 31010, 3, log_widget)
         if device_label_regs:
-            device_label = decode_ascii(device_label_regs)
+            device_label = decode_ascii_cached(device_label_regs)
             if log_widget:
                 log_widget.log_message(f"  📦 DeviceLabel (Reg 31010, 3): {device_label_regs}")
                 log_widget.log_message(f"  ✓ DeviceLabel: {device_label}")
@@ -395,7 +528,7 @@ def collect_data(ip, log_widget=None):
         # Product Model (nur Debug) → 31106
         pm_regs = read_registers(client, device_id, 31106, 8, log_widget)
         if pm_regs:
-            pm = decode_ascii(pm_regs)
+            pm = decode_ascii_cached(pm_regs)
             if log_widget:
                 log_widget.log_message(f"  📦 ProductModel (Reg 31106, 8): {pm_regs}")
                 log_widget.log_message(f"  ✓ ProductModel: {pm}")
@@ -1487,7 +1620,7 @@ class ModbusExporterGUI:
             for device_id in device_ids:
                 # Get device type first
                 ref_regs = read_registers(client, device_id, 31060, 16)
-                ref = decode_ascii(ref_regs) if ref_regs else ""
+                ref = decode_ascii_cached(ref_regs) if ref_regs else ""
                 
                 device_type = ""
                 if ref == "EMS59443":
@@ -1501,7 +1634,7 @@ class ModbusExporterGUI:
                 
                 # Get device name
                 device_name_regs = read_registers(client, device_id, 31000, 10)
-                device_name = decode_ascii(device_name_regs) if device_name_regs else "Unknown"
+                device_name = decode_ascii_cached(device_name_regs) if device_name_regs else "Unknown"
                 
                 # Get RFID
                 rfid_regs = read_registers(client, device_id, 31026, 6)
@@ -1512,7 +1645,7 @@ class ModbusExporterGUI:
                 
                 # Get Serial Number
                 sn_regs = read_registers(client, device_id, 31088, 10)
-                serial_number = decode_ascii(sn_regs) if sn_regs else "Unknown"
+                serial_number = decode_ascii_cached(sn_regs) if sn_regs else "Unknown"
                 
                 # Get enhanced diagnostics
                 diagnostics = read_enhanced_diagnostics(client, device_id, device_type)
