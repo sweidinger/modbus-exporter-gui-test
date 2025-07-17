@@ -162,6 +162,11 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# Code signing certificates (NEVER commit these!)
+*.pfx
+*.p12
+certificate.*
+
 # pytype static type analyzer
 .pytype/
 

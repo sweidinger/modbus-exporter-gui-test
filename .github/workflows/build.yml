@@ -48,6 +48,42 @@ jobs:
           fi
         shell: bash
 
+      - name: Setup Code Signing Certificate (Windows)
+        if: matrix.os == 'windows-latest' && secrets.CODE_SIGNING_CERTIFICATE_BASE64 != ''
+        run: |
+          # Create certificate from base64 encoded secret
+          echo "${{ secrets.CODE_SIGNING_CERTIFICATE_BASE64 }}" | base64 -d > certificate.pfx
+          echo "Certificate created for code signing"
+        shell: bash
+
+      - name: Sign Windows Executable
+        if: matrix.os == 'windows-latest' && secrets.CODE_SIGNING_CERTIFICATE_BASE64 != ''
+        run: |
+          # Sign the executable using PowerShell
+          powershell -Command "& {./scripts/sign_executable.ps1 -ExecutablePath 'dist/modbus_exporter.exe' -CertificatePassword '${{ secrets.CODE_SIGNING_PASSWORD }}'}"
+        shell: cmd
+
+      - name: Extract Public Certificate (Windows)
+        if: matrix.os == 'windows-latest' && secrets.CODE_SIGNING_CERTIFICATE_BASE64 != ''
+        run: |
+          # Extract public certificate for distribution
+          powershell -Command "& {$cert = Get-PfxCertificate -FilePath 'certificate.pfx'; Export-Certificate -Cert $cert -FilePath 'dist/modbus_exporter_certificate.cer'}"
+        shell: cmd
+
+      - name: Verify Code Signature (Windows)
+        if: matrix.os == 'windows-latest' && secrets.CODE_SIGNING_CERTIFICATE_BASE64 != ''
+        run: |
+          # Verify the signature
+          powershell -Command "& {$sig = Get-AuthenticodeSignature -FilePath 'dist/modbus_exporter.exe'; Write-Host 'Signature Status:' $sig.Status; Write-Host 'Signer:' $sig.SignerCertificate.Subject}"
+        shell: cmd
+
+      - name: Cleanup Certificate (Windows)
+        if: matrix.os == 'windows-latest' && secrets.CODE_SIGNING_CERTIFICATE_BASE64 != ''
+        run: |
+          # Remove certificate file for security
+          rm -f certificate.pfx
+        shell: bash
+
       - name: Build with PyInstaller (macOS)
         if: matrix.os == 'macos-latest'
         run: |
@@ -172,9 +208,19 @@ jobs:
             ### Installation:
             1. Download the appropriate file for your operating system
             2. Extract the ZIP file
-            3. Run the executable
+            3. **For Windows**: If you get security warnings, install the certificate first:
+               - Download `install_certificate.ps1` from the scripts folder
+               - Run it as Administrator to install the code signing certificate
+               - This will make the application trusted by your system
+            4. Run the executable
             
             **Note**: On macOS, you may need to right-click and select "Open" to bypass security warnings.
+            
+            ### Code Signing:
+            The Windows executable is digitally signed for security and trust. If you encounter security warnings:
+            1. Download the certificate installation script from the repository
+            2. Run it as Administrator to install the certificate
+            3. The application will then be trusted by your system and security software
           files: |
             modbus_exporter_v${{ env.VERSION }}_windows.zip
             modbus_exporter_v${{ env.VERSION }}_macos.zip
