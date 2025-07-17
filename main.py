@@ -1102,7 +1102,12 @@ class ModbusExporterGUI:
         
         # Save as Excel
         if self.excel_var.get() and EXCEL_AVAILABLE:
-            filename = base_file + diagnostics_suffix + ".xlsx"
+            # Check if the base filename already ends with .xlsx to avoid double extension
+            base_with_suffix = base_file + diagnostics_suffix
+            if base_with_suffix.endswith('.xlsx'):
+                filename = base_with_suffix
+            else:
+                filename = base_with_suffix + ".xlsx"
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = "Modbus Export"
