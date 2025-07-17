@@ -49,36 +49,46 @@ jobs:
         shell: bash
 
       - name: Setup Code Signing Certificate (Windows)
-        if: matrix.os == 'windows-latest' && secrets.CODE_SIGNING_CERTIFICATE_BASE64 != ''
+        if: matrix.os == 'windows-latest'
+        env:
+          CODE_SIGNING_CERTIFICATE_BASE64: ${{ secrets.CODE_SIGNING_CERTIFICATE_BASE64 }}
         run: |
-          # Create certificate from base64 encoded secret
-          echo "${{ secrets.CODE_SIGNING_CERTIFICATE_BASE64 }}" | base64 -d > certificate.pfx
-          echo "Certificate created for code signing"
+          if [ ! -z "$CODE_SIGNING_CERTIFICATE_BASE64" ]; then
+            # Create certificate from base64 encoded secret
+            echo "$CODE_SIGNING_CERTIFICATE_BASE64" | base64 -d > certificate.pfx
+            echo "Certificate created for code signing"
+            echo "CERTIFICATE_AVAILABLE=true" >> $GITHUB_ENV
+          else
+            echo "No code signing certificate provided, skipping code signing"
+            echo "CERTIFICATE_AVAILABLE=false" >> $GITHUB_ENV
+          fi
         shell: bash
 
       - name: Sign Windows Executable
-        if: matrix.os == 'windows-latest' && secrets.CODE_SIGNING_CERTIFICATE_BASE64 != ''
+        if: matrix.os == 'windows-latest' && env.CERTIFICATE_AVAILABLE == 'true'
+        env:
+          CODE_SIGNING_PASSWORD: ${{ secrets.CODE_SIGNING_PASSWORD }}
         run: |
           # Sign the executable using PowerShell
-          powershell -Command "& {./scripts/sign_executable.ps1 -ExecutablePath 'dist/modbus_exporter.exe' -CertificatePassword '${{ secrets.CODE_SIGNING_PASSWORD }}'}"
+          powershell -Command "& {./scripts/sign_executable.ps1 -ExecutablePath 'dist/modbus_exporter.exe' -CertificatePassword '$env:CODE_SIGNING_PASSWORD'}"
         shell: cmd
 
       - name: Extract Public Certificate (Windows)
-        if: matrix.os == 'windows-latest' && secrets.CODE_SIGNING_CERTIFICATE_BASE64 != ''
+        if: matrix.os == 'windows-latest' && env.CERTIFICATE_AVAILABLE == 'true'
         run: |
           # Extract public certificate for distribution
           powershell -Command "& {$cert = Get-PfxCertificate -FilePath 'certificate.pfx'; Export-Certificate -Cert $cert -FilePath 'dist/modbus_exporter_certificate.cer'}"
         shell: cmd
 
       - name: Verify Code Signature (Windows)
-        if: matrix.os == 'windows-latest' && secrets.CODE_SIGNING_CERTIFICATE_BASE64 != ''
+        if: matrix.os == 'windows-latest' && env.CERTIFICATE_AVAILABLE == 'true'
         run: |
           # Verify the signature
           powershell -Command "& {$sig = Get-AuthenticodeSignature -FilePath 'dist/modbus_exporter.exe'; Write-Host 'Signature Status:' $sig.Status; Write-Host 'Signer:' $sig.SignerCertificate.Subject}"
         shell: cmd
 
       - name: Cleanup Certificate (Windows)
-        if: matrix.os == 'windows-latest' && secrets.CODE_SIGNING_CERTIFICATE_BASE64 != ''
+        if: matrix.os == 'windows-latest' && env.CERTIFICATE_AVAILABLE == 'true'
         run: |
           # Remove certificate file for security
           rm -f certificate.pfx
