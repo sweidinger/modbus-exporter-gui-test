@@ -681,14 +681,17 @@ class ModbusExporterGUI:
         test_frame.pack(fill='x', pady=(0, 15))
         
         # Professional Test Button
+# Button with rounded corners and darker text
         test_btn = tk.Button(test_frame, text="Test Connection", 
                             command=self.test_ip,
                             font=("Helvetica Neue", 12, "bold"),
-                            bg='#8be9fd', fg='#282a36',
+                            bg='#8be9fd', fg='#2d2d2d',
                             relief='flat', bd=0,
-                            highlightthickness=0,
                             activebackground='#50fa7b',
-                            activeforeground='#282a36')
+                            activeforeground='#2d2d2d',
+                            highlightthickness=0, highlightbackground='#2d2d2d',
+                            highlightcolor='#2d2d2d')
+        test_btn.config(borderwidth=2, overrelief='solid')
         test_btn.pack(fill='x', padx=0, pady=0, ipady=10)
         
         # Export Options with modern card design
@@ -735,32 +738,44 @@ class ModbusExporterGUI:
         button_frame = tk.Frame(left_column, bg='#282a36')
         button_frame.pack(pady=15)
         
+# Button with rounded corners and darker text
         self.start_btn = tk.Button(button_frame, text="START EXPORT",
                                   command=self.start_export,
-                                  bg='#50fa7b', fg='#282a36',
+                                  bg='#50fa7b', fg='#2d2d2d',
                                   font=("Helvetica Neue", 12, "bold"),
                                   width=15, height=2, relief='flat', bd=0,
                                   activebackground='#8be9fd',
-                                  activeforeground='#282a36')
+                                  activeforeground='#2d2d2d',
+                                  highlightthickness=0, highlightbackground='#2d2d2d',
+                                  highlightcolor='#2d2d2d')
+        self.start_btn.config(borderwidth=2, overrelief='solid')
         self.start_btn.pack(side='left', padx=5)
         
+# Button with rounded corners and darker text
         self.stop_btn = tk.Button(button_frame, text="STOP EXPORT",
                                  command=self.stop_export,
-                                 bg='#ff5555', fg='#f8f8f2',
+                                 bg='#ff5555', fg='#2d2d2d',
                                  font=("Helvetica Neue", 12, "bold"),
                                  width=15, height=2, relief='flat', bd=0,
                                  activebackground='#ff6e6e',
-                                 activeforeground='#f8f8f2',
-                                 state='disabled')
+                                 activeforeground='#2d2d2d',
+                                 state='disabled',
+                                 highlightthickness=0, highlightbackground='#2d2d2d',
+                                 highlightcolor='#2d2d2d')
+        self.stop_btn.config(borderwidth=2, overrelief='solid')
         self.stop_btn.pack(side='left', padx=5)
         
+# Button with rounded corners and darker text
         exit_btn = tk.Button(button_frame, text="EXIT",
                             command=self.on_closing,
-                            bg='#6272a4', fg='#f8f8f2',
+                            bg='#6272a4', fg='#2d2d2d',
                             font=("Helvetica Neue", 12, "bold"),
                             width=15, height=2, relief='flat', bd=0,
                             activebackground='#44475a',
-                            activeforeground='#f8f8f2')
+                            activeforeground='#2d2d2d',
+                            highlightthickness=0, highlightbackground='#2d2d2d',
+                            highlightcolor='#2d2d2d')
+        exit_btn.config(borderwidth=2, overrelief='solid')
         exit_btn.pack(side='left', padx=5)
         
         # Status Section with modern design
@@ -816,14 +831,18 @@ class ModbusExporterGUI:
         live_diag_title.pack(pady=(15, 10))
         
         # Live Diagnostics Button with modern styling
+# Button with rounded corners and darker text
         self.live_diag_btn = tk.Button(live_diag_header, text="Start Live Diagnostics",
                                       command=self.toggle_live_diagnostics,
-                                      bg='#50fa7b', fg='#282a36',
+                                      bg='#50fa7b', fg='#2d2d2d',
                                       font=("Helvetica Neue", 12, "bold"),
                                       width=20, height=2, relief='flat', bd=0,
                                       activebackground='#8be9fd',
-                                      activeforeground='#282a36',
-                                      state='disabled')  # Disabled until connection test passes
+                                      activeforeground='#2d2d2d',
+                                      state='disabled',
+                                      highlightthickness=0, highlightbackground='#2d2d2d',
+                                      highlightcolor='#2d2d2d')
+        self.live_diag_btn.config(borderwidth=2, overrelief='solid')
         self.live_diag_btn.pack(pady=10)
         
         # Live Diagnostics Status with modern styling
