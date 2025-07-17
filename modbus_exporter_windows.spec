@@ -55,7 +55,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='PAS Wireless Device Exporter',
+    name='PAS-Wireless-Device-Exporter.exe',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
