@@ -572,9 +572,11 @@ class ModbusExporterGUI:
         self.last_connection_test = False
         self.last_live_update = "Never"
         
-        # Column visibility variables
+        # Column visibility variables (only for optional columns)
+        self.always_visible_columns = ["DeviceID", "DeviceType", "RFID", "SerialNumber"]
+        self.optional_columns = [col for col in self.live_data_tree_columns if col not in self.always_visible_columns]
         self.column_visibility = {}
-        for col in self.live_data_tree_columns:
+        for col in self.optional_columns:
             self.column_visibility[col] = tk.BooleanVar(value=True)
         
         # Setup GUI
@@ -638,16 +640,17 @@ class ModbusExporterGUI:
         main_container = tk.Frame(self.root, bg='#282a36')
         main_container.pack(fill='both', expand=True, padx=20, pady=10)
         
-        # Configure column weights for proportional sizing
-        main_container.grid_columnconfigure(0, weight=35)  # Left column: 35% of width
-        main_container.grid_columnconfigure(1, weight=65)  # Right column: 65% of width
+        # Configure column weights for proportional sizing - make left panel smaller
+        main_container.grid_columnconfigure(0, weight=1, minsize=250)  # Left column smaller
+        main_container.grid_columnconfigure(1, weight=7, minsize=1200)  # Right column much larger
         main_container.grid_rowconfigure(0, weight=1)      # Single row fills height
         
-        # Left column with modern card-like appearance
-        left_column = tk.Frame(main_container, bg='#282a36')
+        # Left column with explicit width constraint - reduced size
+        left_column = tk.Frame(main_container, bg='#282a36', width=280)
         left_column.grid(row=0, column=0, sticky='nsew', padx=(0, 10))
+        left_column.grid_propagate(False)  # Don't let contents resize the frame
         
-        # Right column with modern card-like appearance
+        # Right column takes remaining space
         right_column = tk.Frame(main_container, bg='#282a36')
         right_column.grid(row=0, column=1, sticky='nsew', padx=(10, 0))
         
@@ -743,40 +746,14 @@ class ModbusExporterGUI:
                                   command=self.start_export,
                                   bg='#50fa7b', fg='#2d2d2d',
                                   font=("Helvetica Neue", 12, "bold"),
-                                  width=15, height=2, relief='flat', bd=0,
+                                  width=20, height=2, relief='flat', bd=0,
                                   activebackground='#8be9fd',
                                   activeforeground='#2d2d2d',
                                   highlightthickness=0, highlightbackground='#2d2d2d',
                                   highlightcolor='#2d2d2d')
         self.start_btn.config(borderwidth=2, overrelief='solid')
-        self.start_btn.pack(side='left', padx=5)
+        self.start_btn.pack(pady=5)
         
-# Button with rounded corners and darker text
-        self.stop_btn = tk.Button(button_frame, text="STOP EXPORT",
-                                 command=self.stop_export,
-                                 bg='#ff5555', fg='#2d2d2d',
-                                 font=("Helvetica Neue", 12, "bold"),
-                                 width=15, height=2, relief='flat', bd=0,
-                                 activebackground='#ff6e6e',
-                                 activeforeground='#2d2d2d',
-                                 state='disabled',
-                                 highlightthickness=0, highlightbackground='#2d2d2d',
-                                 highlightcolor='#2d2d2d')
-        self.stop_btn.config(borderwidth=2, overrelief='solid')
-        self.stop_btn.pack(side='left', padx=5)
-        
-# Button with rounded corners and darker text
-        exit_btn = tk.Button(button_frame, text="EXIT",
-                            command=self.on_closing,
-                            bg='#6272a4', fg='#2d2d2d',
-                            font=("Helvetica Neue", 12, "bold"),
-                            width=15, height=2, relief='flat', bd=0,
-                            activebackground='#44475a',
-                            activeforeground='#2d2d2d',
-                            highlightthickness=0, highlightbackground='#2d2d2d',
-                            highlightcolor='#2d2d2d')
-        exit_btn.config(borderwidth=2, overrelief='solid')
-        exit_btn.pack(side='left', padx=5)
         
         # Status Section with modern design
         status_frame = tk.Frame(left_column, bg='#44475a', relief='flat', bd=0)
@@ -792,32 +769,26 @@ class ModbusExporterGUI:
                                     bg='#44475a', fg='#50fa7b')
         self.status_label.pack(pady=(0, 15))
         
-        # Log Section with modern design
-        log_frame = tk.Frame(left_column, bg='#44475a', relief='flat', bd=0)
-        log_frame.pack(fill='both', expand=True, pady=0)
+        # Activity Log Button
+        log_button_frame = tk.Frame(left_column, bg='#282a36')
+        log_button_frame.pack(pady=(15, 0))
         
-        log_title = tk.Label(log_frame, text="Activity Log", 
-                            font=("Helvetica Neue", 14, "bold"), 
-                            bg='#44475a', fg='#f8f8f2')
-        log_title.pack(pady=(15, 10))
+        # Activity Log Button with modern design
+        self.log_btn = tk.Button(log_button_frame, text="View Activity Log",
+                                command=self.open_log_window,
+                                bg='#6272a4', fg='#2d2d2d',
+                                font=("Helvetica Neue", 12, "bold"),
+                                width=20, height=2, relief='flat', bd=0,
+                                activebackground='#44475a',
+                                activeforeground='#2d2d2d',
+                                highlightthickness=0, highlightbackground='#2d2d2d',
+                                highlightcolor='#2d2d2d')
+        self.log_btn.config(borderwidth=2, overrelief='solid')
+        self.log_btn.pack(pady=5)
         
-        # Modern log text with scrollbar
-        log_container = tk.Frame(log_frame, bg='#44475a')
-        log_container.pack(fill='both', expand=True, padx=15, pady=(0, 15))
-        
-        self.log_text = tk.Text(log_container, height=8, width=50,
-                               bg='#282a36', fg='#50fa7b', font=("SF Mono", 10),
-                               relief='flat', bd=0,
-                               highlightbackground='#6272a4',
-                               highlightcolor='#50fa7b',
-                               highlightthickness=1)
-        
-        log_scrollbar = tk.Scrollbar(log_container, orient='vertical',
-                                    command=self.log_text.yview)
-        self.log_text.configure(yscrollcommand=log_scrollbar.set)
-        
-        self.log_text.pack(side='left', fill='both', expand=True)
-        log_scrollbar.pack(side='right', fill='y')
+        # Initialize log window reference
+        self.log_window = None
+        self.log_text = None  # Will be created when log window opens
         
         # === RIGHT COLUMN CONTENT - Live Diagnostics View ===
         
@@ -825,10 +796,27 @@ class ModbusExporterGUI:
         live_diag_header = tk.Frame(right_column, bg='#44475a', relief='flat', bd=0)
         live_diag_header.pack(fill='x', pady=(0, 15))
         
-        live_diag_title = tk.Label(live_diag_header, text="Live Diagnostics View", 
+        # Title row with status icon and last update in one line
+        title_row = tk.Frame(live_diag_header, bg='#44475a')
+        title_row.pack(fill='x', pady=(15, 10))
+        
+        # Status icon (left side) - round colored circle
+        self.status_icon = tk.Label(title_row, text="●", 
+                                   font=("Helvetica Neue", 20), 
+                                   bg='#44475a', fg='#ff5555')  # Red by default
+        self.status_icon.pack(side='left', padx=(10, 0))
+        
+        # Last Update Timestamp (right side)
+        self.last_update_label = tk.Label(title_row, text="Last Update: Never", 
+                                         font=("Helvetica Neue", 10), 
+                                         bg='#44475a', fg='#6272a4')
+        self.last_update_label.pack(side='right')
+        
+        # Live Diagnostics title (centered)
+        live_diag_title = tk.Label(title_row, text="Live Diagnostics View", 
                                   font=("Helvetica Neue", 16, "bold"), 
                                   bg='#44475a', fg='#f8f8f2')
-        live_diag_title.pack(pady=(15, 10))
+        live_diag_title.pack(expand=True)  # This centers the title
         
         # Live Diagnostics Button with modern styling
 # Button with rounded corners and darker text
@@ -845,18 +833,6 @@ class ModbusExporterGUI:
         self.live_diag_btn.config(borderwidth=2, overrelief='solid')
         self.live_diag_btn.pack(pady=10)
         
-        # Live Diagnostics Status with modern styling
-        self.live_diag_status = tk.Label(live_diag_header, text="Status: Connection required", 
-                                        font=("Helvetica Neue", 11), 
-                                        bg='#44475a', fg='#bd93f9')
-        self.live_diag_status.pack(pady=5)
-        
-        # Last Update Timestamp with modern styling
-        self.last_update_label = tk.Label(live_diag_header, text="Last Update: Never", 
-                                         font=("Helvetica Neue", 10), 
-                                         bg='#44475a', fg='#6272a4')
-        self.last_update_label.pack(pady=2)
-        
         # Column Visibility Controls with modern styling
         columns_frame = tk.Frame(live_diag_header, bg='#44475a')
         columns_frame.pack(pady=10, fill='x')  # Ensure consistent width for stability
@@ -870,12 +846,8 @@ class ModbusExporterGUI:
         column_checkboxes_frame = tk.Frame(columns_frame, bg='#44475a')
         column_checkboxes_frame.pack(pady=5)
         
-        # Column display names
+        # Column display names (only for optional columns)
         column_display_names = {
-            "DeviceID": "ID",
-            "DeviceType": "Type",
-            "RFID": "RFID",
-            "SerialNumber": "Serial Number",
             "DeviceName": "Name",
             "RFCommunication": "RF Com.",
             "CommStatus": "Com. Status",
@@ -886,11 +858,8 @@ class ModbusExporterGUI:
             "Battery": "Battery"
         }
         
-        # Create checkboxes for each column in a 2x5 grid with modern styling
-        for idx, col in enumerate(self.live_data_tree_columns):
-            row = idx // 5
-            column = idx % 5
-            
+        # Create checkboxes only for optional columns in a single line with modern styling
+        for col in self.optional_columns:
             cb = tk.Checkbutton(column_checkboxes_frame, 
                                text=column_display_names.get(col, col),
                                variable=self.column_visibility[col],
@@ -900,7 +869,7 @@ class ModbusExporterGUI:
                                activeforeground='#50fa7b', 
                                activebackground='#44475a',
                                selectcolor='#6272a4')
-            cb.grid(row=row, column=column, sticky='w', padx=3, pady=2)
+            cb.pack(side='left', padx=8, pady=2)  # Single line layout
         
         # Live Diagnostics Data Frame with modern styling
         live_data_frame = tk.Frame(right_column, bg='#44475a', relief='flat', bd=0)
@@ -915,9 +884,9 @@ class ModbusExporterGUI:
         # Define column headings and widths
         column_config = {
             "DeviceID": {"text": "ID", "width": 60, "anchor": tk.CENTER},
-            "DeviceType": {"text": "Type", "width": 70, "anchor": tk.CENTER},
-            "RFID": {"text": "RFID", "width": 80, "anchor": tk.CENTER},
-            "SerialNumber": {"text": "Serial Number", "width": 120, "anchor": tk.CENTER},
+            "DeviceType": {"text": "Type", "width": 140, "anchor": tk.CENTER},  # Increased width for better readability
+            "RFID": {"text": "RFID", "width": 120, "anchor": tk.CENTER},  # Increased width for 8 chars
+            "SerialNumber": {"text": "Serial Number", "width": 160, "anchor": tk.CENTER},
             "DeviceName": {"text": "Name", "width": 120, "anchor": tk.W},
             "RFCommunication": {"text": "RF Com.", "width": 80, "anchor": tk.CENTER},
             "CommStatus": {"text": "Com. Status", "width": 80, "anchor": tk.CENTER},
@@ -958,6 +927,85 @@ class ModbusExporterGUI:
         if not MODBUS_AVAILABLE:
             self.log_message("WARNING: pymodbus not installed. Using simulation mode.")
 
+    def open_log_window(self):
+        """Open a separate window for the activity log"""
+        if self.log_window is not None and self.log_window.winfo_exists():
+            # Window already exists, just bring it to front
+            self.log_window.lift()
+            self.log_window.focus_force()
+            return
+        
+        # Create new log window
+        self.log_window = tk.Toplevel(self.root)
+        self.log_window.title("Activity Log")
+        self.log_window.geometry("800x600")
+        self.log_window.configure(bg='#282a36')
+        
+        # Make window resizable
+        self.log_window.resizable(True, True)
+        self.log_window.minsize(600, 400)
+        
+        # Header
+        header_frame = tk.Frame(self.log_window, bg='#44475a', relief='flat')
+        header_frame.pack(fill='x', pady=(0, 10))
+        
+        title_label = tk.Label(header_frame, text="Activity Log", 
+                              font=("Helvetica Neue", 16, "bold"), 
+                              bg='#44475a', fg='#f8f8f2')
+        title_label.pack(pady=15)
+        
+        # Log container
+        log_container = tk.Frame(self.log_window, bg='#282a36')
+        log_container.pack(fill='both', expand=True, padx=15, pady=(0, 15))
+        
+        # Log text widget with scrollbar
+        self.log_text = tk.Text(log_container, 
+                               bg='#282a36', fg='#50fa7b', 
+                               font=("SF Mono", 10),
+                               relief='flat', bd=0,
+                               highlightbackground='#6272a4',
+                               highlightcolor='#50fa7b',
+                               highlightthickness=1)
+        
+        log_scrollbar = tk.Scrollbar(log_container, orient='vertical',
+                                    command=self.log_text.yview)
+        self.log_text.configure(yscrollcommand=log_scrollbar.set)
+        
+        self.log_text.pack(side='left', fill='both', expand=True)
+        log_scrollbar.pack(side='right', fill='y')
+        
+        # Clear button
+        button_frame = tk.Frame(self.log_window, bg='#282a36')
+        button_frame.pack(fill='x', padx=15, pady=(0, 15))
+        
+        clear_btn = tk.Button(button_frame, text="Clear Log",
+                             command=self.clear_log,
+                             bg='#ff5555', fg='#2d2d2d',
+                             font=("Helvetica Neue", 11, "bold"),
+                             width=15, height=1, relief='flat', bd=0,
+                             activebackground='#ff6e6e',
+                             activeforeground='#2d2d2d')
+        clear_btn.pack(side='right')
+        
+        # Handle window closing
+        def on_log_window_close():
+            self.log_window.destroy()
+            self.log_window = None
+            self.log_text = None
+        
+        self.log_window.protocol("WM_DELETE_WINDOW", on_log_window_close)
+        
+        # Center the window
+        self.log_window.update_idletasks()
+        x = (self.log_window.winfo_screenwidth() // 2) - (400)
+        y = (self.log_window.winfo_screenheight() // 2) - (300)
+        self.log_window.geometry(f"800x600+{x}+{y}")
+    
+    def clear_log(self):
+        """Clear the activity log"""
+        if self.log_text:
+            self.log_text.delete(1.0, tk.END)
+
     def log_message(self, message):
         """Add a timestamped message to the log"""
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -966,10 +1014,12 @@ class ModbusExporterGUI:
         # Print to console
         print(log_entry.strip())
         
-        # Add to GUI log
-        self.log_text.insert(tk.END, log_entry)
-        self.log_text.see(tk.END)
-        self.root.update_idletasks()
+        # Add to GUI log if window exists
+        if self.log_text:
+            self.log_text.insert(tk.END, log_entry)
+            self.log_text.see(tk.END)
+            if self.log_window and self.log_window.winfo_exists():
+                self.log_window.update_idletasks()
 
     def update_status(self, message, color='#4CAF50'):
         """Update the status label"""
@@ -1033,7 +1083,6 @@ class ModbusExporterGUI:
         
         self.is_running = True
         self.start_btn.config(state='disabled')
-        self.stop_btn.config(state='normal')
         
         self.log_message(f"Starting export from {ip}")
         self.update_status("Exporting data...", '#FF9800')
@@ -1049,7 +1098,6 @@ class ModbusExporterGUI:
         
         self.is_running = False
         self.start_btn.config(state='normal')
-        self.stop_btn.config(state='disabled')
         
         self.log_message("Export stopped by user")
         self.update_status("Export stopped", '#FF9800')
@@ -1111,7 +1159,6 @@ class ModbusExporterGUI:
             if self.is_running:
                 self.is_running = False
                 self.start_btn.config(state='normal')
-                self.stop_btn.config(state='disabled')
 
     def flatten_diagnostics(self, data):
         """Flatten the enhanced diagnostics into individual fields for export"""
@@ -1506,10 +1553,12 @@ class ModbusExporterGUI:
         # Check if the last connection test was successful
         if self.last_connection_test or not MODBUS_AVAILABLE:
             self.live_diag_btn.config(state='normal')
-            self.live_diag_status.config(text="Status: Ready to start", fg='#333333')
+            # Keep status icon red when not active
+            self.status_icon.config(fg='#ff5555')
         else:
             self.live_diag_btn.config(state='disabled')
-            self.live_diag_status.config(text="Status: Connection required", fg='#666666')
+            # Keep status icon red when connection required
+            self.status_icon.config(fg='#ff5555')
 
     def update_live_diagnostics_table(self, live_data=None):
         """Update the live diagnostics table with data or clear it"""
@@ -1565,8 +1614,8 @@ class ModbusExporterGUI:
                     "Battery": battery
                 }
                 
-                # Get visible columns
-                visible_columns = [col for col in self.live_data_tree_columns if self.column_visibility[col].get()]
+                # Get visible columns (always visible + optional selected columns)
+                visible_columns = self.always_visible_columns + [col for col in self.optional_columns if self.column_visibility[col].get()]
                 
                 # Create values list for only visible columns
                 values = [all_data.get(col, "") for col in visible_columns]
@@ -1601,7 +1650,8 @@ class ModbusExporterGUI:
         
         self.live_diagnostics_enabled = True
         self.live_diag_btn.config(text="Stop Live Diagnostics", bg='#f44336')
-        self.live_diag_status.config(text="Status: Live monitoring active", fg='#4CAF50')
+        # Update status icon to green when active
+        self.status_icon.config(fg='#50fa7b')
         
         self.log_message("Starting live diagnostics monitoring...")
         self.update_live_diagnostics_table()
@@ -1617,7 +1667,8 @@ class ModbusExporterGUI:
         
         self.live_diagnostics_enabled = False
         self.live_diag_btn.config(text="Start Live Diagnostics", bg='#4CAF50')
-        self.live_diag_status.config(text="Status: Stopped", fg='#666666')
+        # Update status icon to red when stopped
+        self.status_icon.config(fg='#ff5555')
         
         self.log_message("Live diagnostics monitoring stopped")
         self.update_live_diagnostics_table()
@@ -1749,10 +1800,16 @@ class ModbusExporterGUI:
 
     def _auto_adjust_column_widths(self):
         """Auto-adjust column widths based on content with improved calculations"""
-        # Get list of visible columns
-        visible_columns = [col for col in self.live_data_tree_columns if self.column_visibility[col].get()]
+        # Get list of visible columns (always visible + optional selected columns)
+        visible_columns = self.always_visible_columns + [col for col in self.optional_columns if self.column_visibility[col].get()]
+        
+        # Skip auto-resize for columns that should have fixed widths
+        fixed_width_columns = ["DeviceType", "RFID"]
         
         for col in visible_columns:
+            # Skip auto-resize for fixed width columns
+            if col in fixed_width_columns:
+                continue
             # Get the header text width (headers are bold, so need more space)
             header_text = self.live_data_tree.heading(col, 'text')
             header_width = len(header_text) * 12  # Bold headers need more space
@@ -1772,11 +1829,11 @@ class ModbusExporterGUI:
             # Take the maximum of header and content widths
             calculated_width = max(header_width, max_content_width)
             
-            # Set column-specific minimum and maximum widths with more generous limits
+            # Set column-specific minimum and maximum widths with fixed widths for Type and RFID
             column_limits = {
                 "DeviceID": {"min": 60, "max": 120},
-                "DeviceType": {"min": 70, "max": 120},
-                "RFID": {"min": 80, "max": 140},
+                "DeviceType": {"min": 110, "max": 110},  # Fixed width for "HeatTag" (7 chars)
+                "RFID": {"min": 120, "max": 120},  # Fixed width for 8 chars (increased)
                 "SerialNumber": {"min": 120, "max": 180},
                 "DeviceName": {"min": 120, "max": 300},
                 "RFCommunication": {"min": 80, "max": 140},
@@ -1805,11 +1862,8 @@ class ModbusExporterGUI:
         # Prevent GUI updates during column reconfiguration
         self.root.update_idletasks()
         
-        # Get list of visible columns
-        visible_columns = []
-        for col in self.live_data_tree_columns:
-            if self.column_visibility[col].get():
-                visible_columns.append(col)
+        # Get list of visible columns (always visible + optional selected columns)
+        visible_columns = self.always_visible_columns + [col for col in self.optional_columns if self.column_visibility[col].get()]
         
         # Update the tree view to show only visible columns
         self.live_data_tree.config(columns=visible_columns)
