@@ -81,7 +81,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ runner.os }}-modbus-exporter-v${{ env.VERSION }}
+          name: modbus-exporter-v${{ env.VERSION }}-${{ matrix.os }}
           path: dist/*
 
   release:
@@ -102,22 +102,31 @@ jobs:
       - name: Download Windows artifacts
         uses: actions/download-artifact@v4
         with:
-          name: Windows-modbus-exporter-v${{ env.VERSION }}
+          name: modbus-exporter-v${{ env.VERSION }}-windows-latest
           path: ./windows-artifacts
 
       - name: Download macOS artifacts
         uses: actions/download-artifact@v4
         with:
-          name: macOS-modbus-exporter-v${{ env.VERSION }}
+          name: modbus-exporter-v${{ env.VERSION }}-macos-latest
           path: ./macos-artifacts
+
+      - name: List downloaded artifacts
+        run: |
+          echo "Windows artifacts:"
+          ls -la windows-artifacts/
+          echo "macOS artifacts:"
+          ls -la macos-artifacts/
 
       - name: Create ZIP archives
         run: |
           cd windows-artifacts
-          zip -r ../modbus_exporter_v${{ env.VERSION }}_windows.zip *
+          zip -r ../modbus_exporter_v${{ env.VERSION }}_windows.zip .
           cd ../macos-artifacts
-          zip -r ../modbus_exporter_v${{ env.VERSION }}_macos.zip *
+          zip -r ../modbus_exporter_v${{ env.VERSION }}_macos.zip .
           cd ..
+          echo "Created ZIP files:"
+          ls -la *.zip
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
