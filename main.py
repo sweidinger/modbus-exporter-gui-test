@@ -4,6 +4,11 @@ Modbus Data Exporter GUI Application
 Exports Modbus device data to CSV or Excel format
 """
 
+# Version information
+__version__ = "1.3.0"
+__release_date__ = "2025-01-17"
+__author__ = "Stefan Weidinger"
+
 import tkinter as tk
 from tkinter import messagebox, filedialog, ttk
 import threading
@@ -403,7 +408,7 @@ def collect_data(ip, log_widget=None):
 class ModbusExporterGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Modbus Data Exporter")
+        self.root.title(f"Modbus Data Exporter v{__version__}")
         self.root.geometry("1400x800")
         self.root.configure(bg='#333333')
         
@@ -445,15 +450,51 @@ class ModbusExporterGUI:
         
         # Make window focusable
         self.root.focus_force()
+    
+    def create_tooltip(self, widget, text):
+        """Create a tooltip for a widget"""
+        def on_enter(event):
+            tooltip = tk.Toplevel()
+            tooltip.wm_overrideredirect(True)
+            tooltip.wm_geometry(f"+{event.x_root+10}+{event.y_root+10}")
+            tooltip.configure(bg='#ffffe0', bd=1, relief='solid')
+            label = tk.Label(tooltip, text=text, bg='#ffffe0', fg='#000000', 
+                           font=('Arial', 9), pady=2, padx=5)
+            label.pack()
+            widget.tooltip = tooltip
+        
+        def on_leave(event):
+            if hasattr(widget, 'tooltip'):
+                widget.tooltip.destroy()
+                del widget.tooltip
+        
+        widget.bind('<Enter>', on_enter)
+        widget.bind('<Leave>', on_leave)
 
     def setup_gui(self):
         """Setup the main GUI elements"""
         
-        # Title
-        title_label = tk.Label(self.root, text="Modbus Data Exporter", 
+        # Header frame for title and version info
+        header_frame = tk.Frame(self.root, bg='#333333')
+        header_frame.pack(fill='x', pady=10)
+        
+        # Title (left side)
+        title_label = tk.Label(header_frame, text="Modbus Data Exporter", 
                               font=("Arial", 16, "bold"), 
                               bg='#333333', fg='white')
-        title_label.pack(pady=10)
+        title_label.pack(side='left', padx=(20, 0))
+        
+        # Version info box (right side) - simplified with tooltip
+        version_frame = tk.Frame(header_frame, bg='#444444', relief='raised', bd=2)
+        version_frame.pack(side='right', padx=(0, 20))
+        
+        version_label = tk.Label(version_frame, text=f"Version {__version__}", 
+                                font=("Arial", 10, "bold"), 
+                                bg='#444444', fg='#ffffff')
+        version_label.pack(padx=10, pady=5)
+        
+        # Create tooltip for version info
+        self.create_tooltip(version_label, f"Released: {__release_date__}\nBy: {__author__}")
         
         # Main container for two-column layout
         main_container = tk.Frame(self.root, bg='#333333')
