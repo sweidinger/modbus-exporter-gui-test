@@ -162,7 +162,17 @@ Write-Host "Valid Until: $($cert.NotAfter)"
    - SmartScreen or security software blocking
    - Install certificate as described above
 
-3. **Signature verification fails**:
+3. **Windows SmartScreen warning appears**:
+   - SmartScreen doesn't recognize self-signed certificates
+   - Click "More info" → "Run anyway" to bypass
+   - For permanent solution, use a commercial certificate
+
+4. **SentinelOne or other security software blocks the application**:
+   - Install certificate to Trusted Publishers store
+   - Contact IT department for domain-wide deployment
+   - Request application whitelisting as alternative
+
+5. **Signature verification fails**:
    - Check if certificate is valid and not expired
    - Verify timestamping server is accessible
 

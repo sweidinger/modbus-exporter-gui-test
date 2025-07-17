@@ -18,11 +18,20 @@ A GUI application for exporting Modbus device data to CSV and Excel formats.
 
 1. **Download** the latest release from the [Releases](https://github.com/sweidinger/modbus-exporter-gui-test/releases) page
 2. **Extract** the downloaded ZIP file
-3. **For Windows**: If you get security warnings, install the code signing certificate first:
+3. **For Windows**: If you get security warnings (SmartScreen, SentinelOne, etc.):
+   
+   **Quick Fix**: Click "More info" → "Run anyway" to bypass SmartScreen
+   
+   **Permanent Solution**: Install the code signing certificate:
    ```powershell
    # Download install_certificate.ps1 from the repository
    powershell -ExecutionPolicy Bypass -File install_certificate.ps1
    ```
+   
+   📖 **Detailed guides**: 
+   - [SmartScreen Bypass Guide](docs/SMARTSCREEN_BYPASS_GUIDE.md)
+   - [Code Signing Guide](docs/CODE_SIGNING_GUIDE.md)
+   - [IT Department Template](docs/IT_DEPARTMENT_EMAIL_TEMPLATE.md)
 4. **Run** the executable:
    - **Windows**: `modbus_exporter_v[VERSION]_windows.exe`
    - **macOS**: `modbus_exporter_v[VERSION]_macos` (right-click → Open first time)
