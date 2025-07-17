@@ -5,7 +5,7 @@ Exports Modbus device data to CSV or Excel format
 """
 
 # Version information
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 __release_date__ = "2025-01-17"
 __author__ = "Stefan Weidinger"
 
@@ -542,14 +542,19 @@ class ModbusExporterGUI:
     def __init__(self, root):
         self.root = root
         self.root.title(f"Modbus Data Exporter v{__version__}")
-        self.root.geometry("1400x800")
-        self.root.configure(bg='#333333')
+        self.root.geometry("1600x900")
+        self.root.configure(bg='#282a36')  # Modern dark theme background
         
-        # Make window resizable
+        # Modern resizable window with improved constraints
         self.root.resizable(True, True)
+        self.root.minsize(1400, 700)
         
-        # Set minimum window size
-        self.root.minsize(1200, 600)
+        # Set window icon if available (optional)
+        try:
+            # You can add an icon here if you have one
+            pass
+        except:
+            pass
         
         
         # Variables
