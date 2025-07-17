@@ -12,6 +12,7 @@ import csv
 import os
 from datetime import datetime
 import struct
+import json
 
 # Try to import modbus library
 try:
@@ -413,6 +414,7 @@ class ModbusExporterGUI:
         self.csv_var = tk.BooleanVar(value=True)
         self.excel_var = tk.BooleanVar(value=EXCEL_AVAILABLE)
         self.enhanced_diagnostics_var = tk.BooleanVar(value=False)
+        self.sensor_pairing_var = tk.BooleanVar(value=False)
         
         # Setup GUI
         self.setup_gui()
@@ -500,7 +502,14 @@ class ModbusExporterGUI:
                                        variable=self.enhanced_diagnostics_var, font=("Arial", 10),
                                        bg='#cccccc', fg='#000000', activeforeground='#000000',
                                        activebackground='#aaaaaa')
-        enhanced_diag_cb.pack(pady=5)
+        enhanced_diag_cb.pack(pady=2)
+        
+        # Sensor Pairing Sheet Checkbox
+        sensor_pairing_cb = tk.Checkbutton(export_frame, text="Generate Sensor Pairing Sheet",
+                                         variable=self.sensor_pairing_var, font=("Arial", 10),
+                                         bg='#cccccc', fg='#000000', activeforeground='#000000',
+                                         activebackground='#aaaaaa')
+        sensor_pairing_cb.pack(pady=2)
 
         # Control Buttons
         button_frame = tk.Frame(self.root, bg='#333333')
@@ -665,7 +674,19 @@ class ModbusExporterGUI:
                 data = collect_data(ip, self)
                 if data:
                     self.log_message(f"Collected {len(data)} device records. Saving files...")
-                    self._save_original_data(data)
+                    
+                    # Get base filename once for all exports
+                    base_file = self._get_base_filename()
+                    if not base_file:
+                        self.log_message("Export cancelled by user")
+                        return
+                    
+                    # Check if sensor pairing sheet is requested
+                    if self.sensor_pairing_var.get():
+                        self._generate_sensor_pairing_sheet(data, base_file)
+                    # Always perform normal export if CSV/Excel is selected
+                    self._save_original_data_with_base(data, base_file)
+                    
                     self.log_message("Export completed successfully!")
                     self.update_status("Export completed", '#4CAF50')
                 else:
@@ -885,6 +906,207 @@ class ModbusExporterGUI:
             
             wb.save(filename)
             self.log_message(f"✓ Excel-Datei gespeichert: {filename}")
+
+    def _get_base_filename(self):
+        """Get base filename for all exports"""
+        return filedialog.asksaveasfilename(
+            title="Save Export As",
+            defaultextension="",
+            filetypes=[("All Files", "*.*")]
+        )
+
+    def _save_original_data_with_base(self, data, base_file):
+        """Save data using the provided base filename"""
+        # Add enhanced diagnostics suffix if enabled
+        diagnostics_suffix = "_ED" if self.enhanced_diagnostics_var.get() else ""
+        
+        # Save as CSV
+        if self.csv_var.get():
+            filename = base_file + diagnostics_suffix + ".csv"
+            header_extras, flattened_data = self.flatten_diagnostics(data)
+            fieldnames = ["DeviceID", "DeviceType", "RFID", "SerialNumber", "DeviceName", "DeviceLabel"] + header_extras
+            with open(filename, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                for row in flattened_data:
+                    writer.writerow({k: row.get(k, "") for k in fieldnames})
+            self.log_message(f"✓ CSV-Datei gespeichert: {filename}")
+        
+        # Save as Excel
+        if self.excel_var.get() and EXCEL_AVAILABLE:
+            filename = base_file + diagnostics_suffix + ".xlsx"
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Modbus Export"
+            header_extras, flattened_data = self.flatten_diagnostics(data)
+            headers = ["DeviceID", "DeviceType", "RFID", "SerialNumber", "DeviceName", "DeviceLabel"] + header_extras
+            
+            # Add headers
+            ws.append(headers)
+            
+            # Add data rows
+            for row in flattened_data:
+                ws.append([row.get(h, "") for h in headers])
+            
+            # Apply conditional formatting for Signal Quality if present
+            if "Signal Quality" in headers:
+                signal_quality_col = headers.index("Signal Quality") + 1  # Excel columns are 1-indexed
+                signal_quality_col_letter = openpyxl.utils.get_column_letter(signal_quality_col)
+                
+                # Define color fills for different signal quality levels
+                from openpyxl.styles import PatternFill
+                excellent_fill = PatternFill(start_color="00FF00", end_color="00FF00", fill_type="solid")  # Green
+                good_fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")      # Light Green
+                fair_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")      # Yellow
+                weak_fill = PatternFill(start_color="FF6600", end_color="FF6600", fill_type="solid")      # Orange
+                very_weak_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid") # Red
+                unknown_fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")   # Gray
+                
+                # Apply formatting to each cell in the Signal Quality column
+                for row_num in range(2, len(flattened_data) + 2):  # Start from row 2 (after header)
+                    cell = ws[f"{signal_quality_col_letter}{row_num}"]
+                    signal_quality_value = str(cell.value).strip() if cell.value else ""
+                    
+                    if signal_quality_value == "Excellent":
+                        cell.fill = excellent_fill
+                    elif signal_quality_value == "Good":
+                        cell.fill = good_fill
+                    elif signal_quality_value == "Fair":
+                        cell.fill = fair_fill
+                    elif signal_quality_value == "Weak":
+                        cell.fill = weak_fill
+                    elif signal_quality_value == "Very Weak":
+                        cell.fill = very_weak_fill
+                    elif signal_quality_value == "Unknown" or signal_quality_value == "":
+                        cell.fill = unknown_fill
+            
+            # Apply conditional formatting for RSSI if present
+            if "RSSI" in headers:
+                rssi_col = headers.index("RSSI") + 1  # Excel columns are 1-indexed
+                rssi_col_letter = openpyxl.utils.get_column_letter(rssi_col)
+                
+                # Define color fills for different RSSI power levels
+                from openpyxl.styles import PatternFill
+                rssi_good_fill = PatternFill(start_color="00FF00", end_color="00FF00", fill_type="solid")    # Green (0 to -65 dBm)
+                rssi_average_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid") # Yellow (-65 to -75 dBm)
+                rssi_poor_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")    # Red (< -75 dBm)
+                rssi_unknown_fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid") # Gray (Unknown/NaN)
+                
+                # Apply formatting to each cell in the RSSI column
+                for row_num in range(2, len(flattened_data) + 2):  # Start from row 2 (after header)
+                    cell = ws[f"{rssi_col_letter}{row_num}"]
+                    rssi_value = str(cell.value).strip() if cell.value else ""
+                    
+                    try:
+                        if rssi_value and rssi_value.lower() != 'nan':
+                            rssi_float = float(rssi_value)
+                            if rssi_float >= -65:  # 0 to -65 dBm = Good
+                                cell.fill = rssi_good_fill
+                            elif rssi_float >= -75:  # -65 to -75 dBm = Average
+                                cell.fill = rssi_average_fill
+                            else:  # < -75 dBm = Poor
+                                cell.fill = rssi_poor_fill
+                        else:
+                            cell.fill = rssi_unknown_fill  # NaN or empty values
+                    except (ValueError, TypeError):
+                        cell.fill = rssi_unknown_fill  # Invalid values
+            
+            wb.save(filename)
+            self.log_message(f"✓ Excel-Datei gespeichert: {filename}")
+
+    def _generate_sensor_pairing_sheet(self, data, base_file):
+        """Generate an Excel sensor pairing sheet by merging Modbus data with JSON configuration"""
+        json_file = filedialog.askopenfilename(
+            title="Select JSON Configuration File",
+            filetypes=[("JSON Files", "*.json"), ("All Files", "*.*")]
+        )
+        
+        if not json_file:
+            self.log_message("Sensor pairing generation canceled by user")
+            return
+        
+        try:
+            self.log_message(f"Loading JSON configuration from {json_file}")
+            
+            # Load JSON configuration
+            with open(json_file, 'r') as json_f:
+                json_data = json.load(json_f)
+            
+            # Get sensors from JSON data
+            sensors = json_data.get('sensors', [])
+            self.log_message(f"Found {len(sensors)} sensors in configuration")
+            
+            # Create a mapping from device ID to device data (since RFID formats might differ)
+            device_map = {}
+            for device in data:
+                device_id = str(device.get('DeviceID', ''))
+                rfid = device.get('RFID', '')
+                if device_id:
+                    device_map[device_id] = device
+                if rfid:
+                    device_map[rfid] = device
+            
+            # Use the provided base filename and append _SPS
+            output_file = f"{base_file}_SPS.xlsx"
+            
+            # Create Excel workbook
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Sensor Pairing Sheet"
+            
+            # Updated headers with requested order (removed duplicate Description field)
+            headers = [
+                "Sensor ID", "RFID", "Serial Number", "Device Type", "Device Name", "Device Label",
+                "Equipement", "Sensor Position", "Measured Point", "Cubicle ID", "Cubicle Type",
+                "Feeder ID", "Circuit Breaker ID", "Drawer ID"
+            ]
+            
+            # Add headers to worksheet
+            ws.append(headers)
+            
+            # Process each sensor from JSON
+            for sensor in sensors:
+                sensor_id = sensor.get('slaveId', '')
+                rfid = sensor.get('deviceAddress', '')
+                # Extract additional attributes from JSON
+                equipement = sensor.get('Equipement', '')
+                sensor_position = sensor.get('SensorPosition', '')
+                measured_point = sensor.get('MeasuredPoint', '')
+                cubicle_id = sensor.get('CubicleId', '')
+                cubicle_type = sensor.get('CubicleType', '')
+                feeder_id = sensor.get('FeederId', '')
+                circuit_breaker_id = sensor.get('CircuitBreakerId', '')
+                drawer_id = sensor.get('DrawerId', '')
+                
+                # Find matching device data - try multiple matching strategies
+                device_data = device_map.get(rfid, {})
+                if not device_data:
+                    # Try matching by slaveId (DeviceID)
+                    device_data = device_map.get(sensor_id, {})
+                
+                # Extract device information
+                device_type = device_data.get('DeviceType', 'Not Found')
+                serial_number = device_data.get('SerialNumber', 'Not Found')
+                device_name = device_data.get('DeviceName', 'Not Found')
+                device_label = device_data.get('DeviceLabel', 'Not Found')
+                
+                # Create row data without enhanced diagnostics
+                row_data = [
+                    sensor_id, rfid, serial_number, device_type, device_name, device_label,
+                    equipement, sensor_position, measured_point, cubicle_id, cubicle_type,
+                    feeder_id, circuit_breaker_id, drawer_id
+                ]
+                
+                ws.append(row_data)
+            
+            # No conditional formatting needed for sensor pairing sheet
+            
+            # Save the workbook
+            wb.save(output_file)
+            self.log_message(f"✓ Sensor pairing sheet saved: {output_file}")
+            
+        except Exception as e:
+            self.log_message(f"Error generating sensor pairing sheet: {str(e)}")
 
     def on_closing(self):
         """Handle application closing"""
