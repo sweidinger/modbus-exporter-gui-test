@@ -5,7 +5,7 @@ Exports Modbus device data to CSV or Excel format
 """
 
 import tkinter as tk
-from tkinter import messagebox, filedialog
+from tkinter import messagebox, filedialog, ttk
 import threading
 import time
 import csv
@@ -179,9 +179,9 @@ def decode_communication_status(value):
     try:
         val = int(value)
         if val == 0:
-            return "Communication loss"
+            return "Com. loss"
         elif val == 1:
-            return "Communication OK"
+            return "OK"
         else:
             return f"Unknown ({val})"
     except (ValueError, TypeError):
@@ -404,8 +404,14 @@ class ModbusExporterGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Modbus Data Exporter")
-        self.root.geometry("600x700")
+        self.root.geometry("1400x800")
         self.root.configure(bg='#333333')
+        
+        # Make window resizable
+        self.root.resizable(True, True)
+        
+        # Set minimum window size
+        self.root.minsize(1200, 600)
         
         
         # Variables
@@ -415,6 +421,18 @@ class ModbusExporterGUI:
         self.excel_var = tk.BooleanVar(value=EXCEL_AVAILABLE)
         self.enhanced_diagnostics_var = tk.BooleanVar(value=False)
         self.sensor_pairing_var = tk.BooleanVar(value=False)
+        
+        # Live diagnostics variables
+        self.live_diagnostics_enabled = False
+        self.live_diagnostics_thread = None
+        self.live_data_tree_columns = ["DeviceID", "DeviceType", "RFID", "SerialNumber", "DeviceName", "RFCommunication", "CommStatus", "SignalQuality", "RSSI", "LQI", "GatewayPER", "Battery"]
+        self.last_connection_test = False
+        self.last_live_update = "Never"
+        
+        # Column visibility variables
+        self.column_visibility = {}
+        for col in self.live_data_tree_columns:
+            self.column_visibility[col] = tk.BooleanVar(value=True)
         
         # Setup GUI
         self.setup_gui()
@@ -437,9 +455,28 @@ class ModbusExporterGUI:
                               bg='#333333', fg='white')
         title_label.pack(pady=10)
         
+        # Main container for two-column layout
+        main_container = tk.Frame(self.root, bg='#333333')
+        main_container.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        # Configure column weights for proportional sizing
+        main_container.grid_columnconfigure(0, weight=35)  # Left column: 35% of width
+        main_container.grid_columnconfigure(1, weight=65)  # Right column: 65% of width
+        main_container.grid_rowconfigure(0, weight=1)      # Single row fills height
+        
+        # Left column - Controls and Log (35% of width)
+        left_column = tk.Frame(main_container, bg='#333333')
+        left_column.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
+        
+        # Right column - Live Diagnostics View (65% of width)
+        right_column = tk.Frame(main_container, bg='#333333')
+        right_column.grid(row=0, column=1, sticky='nsew', padx=(5, 0))
+        
+        # === LEFT COLUMN CONTENT ===
+        
         # IP Address Section
-        ip_frame = tk.Frame(self.root, bg='#cccccc', relief='raised', bd=2)
-        ip_frame.pack(fill='x', padx=20, pady=10)
+        ip_frame = tk.Frame(left_column, bg='#cccccc', relief='raised', bd=2)
+        ip_frame.pack(fill='x', pady=5)
         
         ip_label = tk.Label(ip_frame, text="Modbus Device IP Address:", 
                            font=("Arial", 12), bg='#cccccc', fg='#000000')
@@ -457,8 +494,8 @@ class ModbusExporterGUI:
         self.ip_entry.insert(0, "10.0.1.110")  # Default value
         
         # Test IP Button Frame
-        test_frame = tk.Frame(self.root, bg='#cccccc', relief='raised', bd=2)
-        test_frame.pack(fill='x', padx=20, pady=10)
+        test_frame = tk.Frame(left_column, bg='#cccccc', relief='raised', bd=2)
+        test_frame.pack(fill='x', pady=5)
         
         # Test IP Button
         test_btn = tk.Button(test_frame, text="Test IP Connection", 
@@ -474,8 +511,8 @@ class ModbusExporterGUI:
         test_btn.pack(fill='x', padx=10, pady=10)
         
         # Export Options Section
-        export_frame = tk.Frame(self.root, bg='#cccccc', relief='raised', bd=2)
-        export_frame.pack(fill='x', padx=20, pady=10)
+        export_frame = tk.Frame(left_column, bg='#cccccc', relief='raised', bd=2)
+        export_frame.pack(fill='x', pady=5)
         
         export_label = tk.Label(export_frame, text="Export Format:", 
                                font=("Arial", 12), bg='#cccccc', fg='#000000')
@@ -512,34 +549,34 @@ class ModbusExporterGUI:
         sensor_pairing_cb.pack(pady=2)
 
         # Control Buttons
-        button_frame = tk.Frame(self.root, bg='#333333')
-        button_frame.pack(pady=20)
+        button_frame = tk.Frame(left_column, bg='#333333')
+        button_frame.pack(pady=10)
         
         self.start_btn = tk.Button(button_frame, text="START EXPORT",
                                   command=self.start_export,
                                   bg='#2196F3', fg='black',
-                                  font=("Arial", 14, "bold"),
-                                  width=15, height=2)
-        self.start_btn.pack(side='left', padx=10)
+                                  font=("Arial", 12, "bold"),
+                                  width=12, height=2)
+        self.start_btn.pack(side='left', padx=5)
         
         self.stop_btn = tk.Button(button_frame, text="STOP EXPORT",
                                  command=self.stop_export,
                                  bg='#f44336', fg='black',
-                                 font=("Arial", 14, "bold"),
-                                 width=15, height=2,
+                                 font=("Arial", 12, "bold"),
+                                 width=12, height=2,
                                  state='disabled')
-        self.stop_btn.pack(side='left', padx=10)
+        self.stop_btn.pack(side='left', padx=5)
         
         exit_btn = tk.Button(button_frame, text="EXIT",
                             command=self.on_closing,
                             bg='#757575', fg='black',
-                            font=("Arial", 14, "bold"),
-                            width=15, height=2)
-        exit_btn.pack(side='left', padx=10)
+                            font=("Arial", 12, "bold"),
+                            width=12, height=2)
+        exit_btn.pack(side='left', padx=5)
         
         # Status Section
-        status_frame = tk.Frame(self.root, bg='#cccccc', relief='raised', bd=2)
-        status_frame.pack(fill='x', padx=20, pady=10)
+        status_frame = tk.Frame(left_column, bg='#cccccc', relief='raised', bd=2)
+        status_frame.pack(fill='x', pady=5)
         
         status_title = tk.Label(status_frame, text="Status:", 
                                font=("Arial", 12, "bold"), bg='#cccccc', fg='#000000')
@@ -550,8 +587,8 @@ class ModbusExporterGUI:
         self.status_label.pack(pady=5)
         
         # Log Section
-        log_frame = tk.Frame(self.root, bg='#cccccc', relief='raised', bd=2)
-        log_frame.pack(fill='both', expand=True, padx=20, pady=10)
+        log_frame = tk.Frame(left_column, bg='#cccccc', relief='raised', bd=2)
+        log_frame.pack(fill='both', expand=True, pady=5)
         
         log_title = tk.Label(log_frame, text="Log Output:", 
                             font=("Arial", 12, "bold"), bg='#cccccc', fg='#000000')
@@ -561,8 +598,8 @@ class ModbusExporterGUI:
         log_container = tk.Frame(log_frame, bg='#cccccc')
         log_container.pack(fill='both', expand=True, padx=5, pady=5)
         
-        self.log_text = tk.Text(log_container, height=8, width=70,
-                               bg='#000000', fg='#00ff00', font=("Courier", 10),
+        self.log_text = tk.Text(log_container, height=8, width=50,
+                               bg='#000000', fg='#00ff00', font=("Courier", 9),
                                relief='sunken', bd=2)
         
         log_scrollbar = tk.Scrollbar(log_container, orient='vertical',
@@ -572,7 +609,125 @@ class ModbusExporterGUI:
         self.log_text.pack(side='left', fill='both', expand=True)
         log_scrollbar.pack(side='right', fill='y')
         
-        # Initial log message
+        # === RIGHT COLUMN CONTENT - Live Diagnostics View ===
+        
+        # Live Diagnostics Header
+        live_diag_header = tk.Frame(right_column, bg='#cccccc', relief='raised', bd=2)
+        live_diag_header.pack(fill='x', pady=5)
+        
+        live_diag_title = tk.Label(live_diag_header, text="Live Diagnostics View", 
+                                  font=("Arial", 14, "bold"), bg='#cccccc', fg='#000000')
+        live_diag_title.pack(pady=10)
+        
+        # Live Diagnostics Button
+        self.live_diag_btn = tk.Button(live_diag_header, text="Start Live Diagnostics",
+                                      command=self.toggle_live_diagnostics,
+                                      bg='#4CAF50', fg='black',
+                                      font=("Arial", 12, "bold"),
+                                      width=20, height=2,
+                                      state='disabled')  # Disabled until connection test passes
+        self.live_diag_btn.pack(pady=10)
+        
+        # Live Diagnostics Status
+        self.live_diag_status = tk.Label(live_diag_header, text="Status: Connection required", 
+                                        font=("Arial", 10), bg='#cccccc', fg='#666666')
+        self.live_diag_status.pack(pady=5)
+        
+        # Last Update Timestamp
+        self.last_update_label = tk.Label(live_diag_header, text="Last Update: Never", 
+                                         font=("Arial", 9), bg='#cccccc', fg='#666666')
+        self.last_update_label.pack(pady=2)
+        
+        # Column Visibility Controls
+        columns_frame = tk.Frame(live_diag_header, bg='#cccccc')
+        columns_frame.pack(pady=5)
+        
+        columns_label = tk.Label(columns_frame, text="Visible Columns:", 
+                                font=("Arial", 10, "bold"), bg='#cccccc', fg='#000000')
+        columns_label.pack(pady=2)
+        
+        # Create a frame for column checkboxes in a grid layout
+        column_checkboxes_frame = tk.Frame(columns_frame, bg='#cccccc')
+        column_checkboxes_frame.pack(pady=2)
+        
+        # Column display names
+        column_display_names = {
+            "DeviceID": "ID",
+            "DeviceType": "Type",
+            "RFID": "RFID",
+            "SerialNumber": "Serial Number",
+            "DeviceName": "Name",
+            "RFCommunication": "RF Com.",
+            "CommStatus": "Com. Status",
+            "SignalQuality": "Signal Quality",
+            "RSSI": "RSSI",
+            "LQI": "LQI",
+            "GatewayPER": "Gateway PER",
+            "Battery": "Battery"
+        }
+        
+        # Create checkboxes for each column in a 2x5 grid
+        for idx, col in enumerate(self.live_data_tree_columns):
+            row = idx // 5
+            column = idx % 5
+            
+            cb = tk.Checkbutton(column_checkboxes_frame, 
+                               text=column_display_names.get(col, col),
+                               variable=self.column_visibility[col],
+                               command=self.update_column_visibility,
+                               font=("Arial", 8), bg='#cccccc', fg='#000000',
+                               activeforeground='#000000', activebackground='#aaaaaa')
+            cb.grid(row=row, column=column, sticky='w', padx=2, pady=1)
+        
+        # Live Diagnostics Data Frame
+        live_data_frame = tk.Frame(right_column, bg='#cccccc', relief='raised', bd=2)
+        live_data_frame.pack(fill='both', expand=True, pady=5)
+        
+        # Live data display tree with improved styling
+        self.live_data_tree = ttk.Treeview(live_data_frame, columns=self.live_data_tree_columns, show='headings')
+        
+        # Define column headings and widths
+        column_config = {
+            "DeviceID": {"text": "ID", "width": 60, "anchor": tk.CENTER},
+            "DeviceType": {"text": "Type", "width": 70, "anchor": tk.CENTER},
+            "RFID": {"text": "RFID", "width": 80, "anchor": tk.CENTER},
+            "SerialNumber": {"text": "Serial Number", "width": 120, "anchor": tk.CENTER},
+            "DeviceName": {"text": "Name", "width": 120, "anchor": tk.W},
+            "RFCommunication": {"text": "RF Com.", "width": 80, "anchor": tk.CENTER},
+            "CommStatus": {"text": "Com. Status", "width": 80, "anchor": tk.CENTER},
+            "SignalQuality": {"text": "Signal Quality", "width": 100, "anchor": tk.CENTER},
+            "RSSI": {"text": "RSSI (dBm)", "width": 80, "anchor": tk.CENTER},
+            "LQI": {"text": "LQI", "width": 60, "anchor": tk.CENTER},
+            "GatewayPER": {"text": "Gateway PER", "width": 80, "anchor": tk.CENTER},
+            "Battery": {"text": "Battery (V)", "width": 80, "anchor": tk.CENTER}
+        }
+        
+        for col in self.live_data_tree_columns:
+            config = column_config.get(col, {"text": col, "width": 100, "anchor": tk.CENTER})
+            self.live_data_tree.heading(col, text=config["text"])
+            self.live_data_tree.column(col, width=config["width"], anchor=config["anchor"], minwidth=50)
+        
+        # Configure tree view styling with color tags
+        style = ttk.Style()
+        style.theme_use('clam')
+        style.configure('Treeview', background='#ffffff', foreground='#000000', fieldbackground='#ffffff')
+        style.configure('Treeview.Heading', background='#e0e0e0', foreground='#000000', font=('Arial', 10, 'bold'))
+        style.map('Treeview', background=[('selected', '#0078d4')])
+        
+        # Configure tags for different value types
+        self.live_data_tree.tag_configure('good', foreground='#4CAF50')
+        self.live_data_tree.tag_configure('fair', foreground='#FF9800')
+        self.live_data_tree.tag_configure('poor', foreground='#f44336')
+        self.live_data_tree.tag_configure('excellent', foreground='#2E7D32')  # Changed from blue to dark green
+        self.live_data_tree.tag_configure('normal', foreground='#000000')
+        
+        self.live_data_tree.pack(side='left', fill='both', expand=True)
+        
+        # Scrollbar
+        live_data_scrollbar = ttk.Scrollbar(live_data_frame, orient='vertical', command=self.live_data_tree.yview)
+        self.live_data_tree.configure(yscrollcommand=live_data_scrollbar.set)
+        live_data_scrollbar.pack(side='right', fill='y')
+        
         self.log_message("Application started. Ready to export Modbus data.")
         if not MODBUS_AVAILABLE:
             self.log_message("WARNING: pymodbus not installed. Using simulation mode.")
@@ -616,18 +771,25 @@ class ModbusExporterGUI:
                 if client.connect():
                     self.log_message(f"✓ Successfully connected to {ip}")
                     self.update_status("Connection successful", '#4CAF50')
+                    self.last_connection_test = True
                     client.close()
                 else:
                     self.log_message(f"✗ Failed to connect to {ip}")
                     self.update_status("Connection failed", '#f44336')
+                    self.last_connection_test = False
             else:
                 # Simulate test
                 time.sleep(2)
                 self.log_message(f"✓ IP test completed for {ip} (simulation mode)")
                 self.update_status("Test completed (simulation)", '#4CAF50')
+                self.last_connection_test = True
         except Exception as e:
             self.log_message(f"✗ Error testing IP {ip}: {str(e)}")
             self.update_status("Connection error", '#f44336')
+            self.last_connection_test = False
+        finally:
+            # Update live diagnostics button state based on connection test result
+            self.update_live_diagnostics_button()
 
     def start_export(self):
         """Start the data export process"""
@@ -1108,11 +1270,361 @@ class ModbusExporterGUI:
         except Exception as e:
             self.log_message(f"Error generating sensor pairing sheet: {str(e)}")
 
+    def update_live_diagnostics_button(self):
+        """Update the live diagnostics button state based on connection status"""
+        # Check if the last connection test was successful
+        if self.last_connection_test or not MODBUS_AVAILABLE:
+            self.live_diag_btn.config(state='normal')
+            self.live_diag_status.config(text="Status: Ready to start", fg='#333333')
+        else:
+            self.live_diag_btn.config(state='disabled')
+            self.live_diag_status.config(text="Status: Connection required", fg='#666666')
+
+    def update_live_diagnostics_table(self, live_data=None):
+        """Update the live diagnostics table with data or clear it"""
+        # Clear existing data
+        for item in self.live_data_tree.get_children():
+            self.live_data_tree.delete(item)
+        
+        if live_data:
+            # Update timestamp
+            current_time = datetime.now().strftime("%H:%M:%S")
+            self.last_update_label.config(text=f"Last Update: {current_time}")
+            
+            # Add new data rows
+            for device in live_data:
+                device_id = device.get("DeviceID", "Unknown")
+                device_type = device.get("DeviceType", "Unknown")
+                device_name = device.get("DeviceName", "Unknown")
+                diagnostics = device.get("Diagnostics", {})
+                
+                # Extract values for table columns
+                rf_comm = decode_rf_communication_validity(diagnostics.get("RF Communication Validity", "N/A"))
+                comm_status = decode_communication_status(diagnostics.get("Communication Status", "N/A"))
+                signal_quality = diagnostics.get("Signal Quality", "N/A")
+                rssi = diagnostics.get("RSSI", "N/A")
+                lqi = diagnostics.get("LQI", "N/A")
+                gateway_per = diagnostics.get("Gateway PER", "N/A")
+                battery = diagnostics.get("Battery Voltage", "N/A")
+                
+                # Determine row color based on signal quality
+                row_tag = 'normal'
+                if signal_quality == "Excellent":
+                    row_tag = 'excellent'
+                elif signal_quality == "Good":
+                    row_tag = 'good'
+                elif signal_quality == "Fair":
+                    row_tag = 'fair'
+                elif signal_quality == "Weak":
+                    row_tag = 'poor'
+                
+                # Prepare data for all columns
+                all_data = {
+                    "DeviceID": device_id,
+                    "DeviceType": device_type,
+                    "RFID": device.get("RFID", "Unknown"),
+                    "SerialNumber": device.get("SerialNumber", "Unknown"),
+                    "DeviceName": device_name,
+                    "RFCommunication": rf_comm,
+                    "CommStatus": comm_status,
+                    "SignalQuality": signal_quality,
+                    "RSSI": rssi,
+                    "LQI": lqi,
+                    "GatewayPER": gateway_per,
+                    "Battery": battery
+                }
+                
+                # Get visible columns
+                visible_columns = [col for col in self.live_data_tree_columns if self.column_visibility[col].get()]
+                
+                # Create values list for only visible columns
+                values = [all_data.get(col, "") for col in visible_columns]
+                
+                # Add row to table with color tag
+                self.live_data_tree.insert("", "end", values=values, tags=(row_tag,))
+            
+            # Auto-adjust column widths based on content
+            self._auto_adjust_column_widths()
+        else:
+            # Clear timestamp when no data
+            self.last_update_label.config(text="Last Update: Never")
+        
+        self.root.update_idletasks()
+
+    def toggle_live_diagnostics(self):
+        """Toggle live diagnostics on/off"""
+        if self.live_diagnostics_enabled:
+            self.stop_live_diagnostics()
+        else:
+            self.start_live_diagnostics()
+
+    def start_live_diagnostics(self):
+        """Start live diagnostics monitoring"""
+        if self.live_diagnostics_enabled:
+            return
+        
+        ip = self.ip_entry.get().strip()
+        if not ip:
+            messagebox.showerror("Error", "Please enter an IP address")
+            return
+        
+        self.live_diagnostics_enabled = True
+        self.live_diag_btn.config(text="Stop Live Diagnostics", bg='#f44336')
+        self.live_diag_status.config(text="Status: Live monitoring active", fg='#4CAF50')
+        
+        self.log_message("Starting live diagnostics monitoring...")
+        self.update_live_diagnostics_table()
+        
+        # Start live diagnostics in separate thread
+        self.live_diagnostics_thread = threading.Thread(target=self._live_diagnostics_worker, args=(ip,), daemon=True)
+        self.live_diagnostics_thread.start()
+
+    def stop_live_diagnostics(self):
+        """Stop live diagnostics monitoring"""
+        if not self.live_diagnostics_enabled:
+            return
+        
+        self.live_diagnostics_enabled = False
+        self.live_diag_btn.config(text="Start Live Diagnostics", bg='#4CAF50')
+        self.live_diag_status.config(text="Status: Stopped", fg='#666666')
+        
+        self.log_message("Live diagnostics monitoring stopped")
+        self.update_live_diagnostics_table()
+
+    def _live_diagnostics_worker(self, ip):
+        """Worker thread for live diagnostics monitoring"""
+        try:
+            while self.live_diagnostics_enabled:
+                if MODBUS_AVAILABLE:
+                    # Collect live data
+                    live_data = self._collect_live_diagnostics_data(ip)
+                    if live_data:
+                        self.update_live_diagnostics_table(live_data)
+                    else:
+                        self.update_live_diagnostics_table()
+                else:
+                    # Simulation mode
+                    simulated_data = self._simulate_live_diagnostics_data()
+                    self.update_live_diagnostics_table(simulated_data)
+                
+                # Wait for 30 seconds before next update
+                for i in range(30):
+                    if not self.live_diagnostics_enabled:
+                        break
+                    time.sleep(1)
+                    
+        except Exception as e:
+            self.log_message(f"Live diagnostics error: {str(e)}")
+            self.update_live_diagnostics_table()
+            self.stop_live_diagnostics()
+
+    def _collect_live_diagnostics_data(self, ip):
+        """Collect live diagnostics data from the device"""
+        try:
+            client = ModbusClient(ip)
+            if not client.connect():
+                return None
+            
+            # Get device IDs
+            device_ids = get_device_ids(client)
+            if not device_ids:
+                client.close()
+                return None
+            
+            live_data = []
+            for device_id in device_ids:
+                # Get device type first
+                ref_regs = read_registers(client, device_id, 31060, 16)
+                ref = decode_ascii(ref_regs) if ref_regs else ""
+                
+                device_type = ""
+                if ref == "EMS59443":
+                    device_type = "CL110"
+                elif ref == "EMS59440":
+                    device_type = "TH110"
+                elif ref == "SMT10020":
+                    device_type = "HeatTag"
+                else:
+                    device_type = "Unknown"
+                
+                # Get device name
+                device_name_regs = read_registers(client, device_id, 31000, 10)
+                device_name = decode_ascii(device_name_regs) if device_name_regs else "Unknown"
+                
+                # Get RFID
+                rfid_regs = read_registers(client, device_id, 31026, 6)
+                rfid = ""
+                if rfid_regs:
+                    hex_str = "".join(f"{reg:04X}" for reg in rfid_regs if reg > 0)
+                    rfid = hex_str[:8]
+                
+                # Get Serial Number
+                sn_regs = read_registers(client, device_id, 31088, 10)
+                serial_number = decode_ascii(sn_regs) if sn_regs else "Unknown"
+                
+                # Get enhanced diagnostics
+                diagnostics = read_enhanced_diagnostics(client, device_id, device_type)
+                
+                device_data = {
+                    "DeviceID": device_id,
+                    "DeviceType": device_type,
+                    "DeviceName": device_name,
+                    "RFID": rfid,
+                    "SerialNumber": serial_number,
+                    "Diagnostics": diagnostics
+                }
+                
+                live_data.append(device_data)
+            
+            client.close()
+            return live_data
+            
+        except Exception as e:
+            self.log_message(f"Error collecting live diagnostics data: {str(e)}")
+            return None
+
+    def _simulate_live_diagnostics_data(self):
+        """Simulate live diagnostics data for demo purposes"""
+        import random
+        
+        # Simulate data for 3 devices
+        simulated_data = []
+        for i in range(3):
+            device_type = "CL110" if i % 2 == 0 else "TH110"
+            diagnostics = {
+                "RF Communication Validity": 1,
+                "Communication Status": 1,
+                "Gateway PER": round(random.uniform(5.0, 25.0), 2),
+                "RSSI": round(random.uniform(-85.0, -45.0), 2),
+                "LQI": random.randint(40, 80),
+                "Signal Quality": random.choice(["Good", "Fair", "Excellent"])
+            }
+            
+            if device_type == "CL110":
+                diagnostics["Battery Voltage"] = round(random.uniform(3.0, 3.6), 2)
+            
+            device_data = {
+                "DeviceID": 100 + i,
+                "DeviceType": device_type,
+                "DeviceName": f"Device_{i+1}",
+                "RFID": f"ABCD{i:04d}",
+                "SerialNumber": f"SN{i:06d}",
+                "Diagnostics": diagnostics
+            }
+            
+            simulated_data.append(device_data)
+        
+        return simulated_data
+
+    def _auto_adjust_column_widths(self):
+        """Auto-adjust column widths based on content with improved calculations"""
+        # Get list of visible columns
+        visible_columns = [col for col in self.live_data_tree_columns if self.column_visibility[col].get()]
+        
+        for col in visible_columns:
+            # Get the header text width (headers are bold, so need more space)
+            header_text = self.live_data_tree.heading(col, 'text')
+            header_width = len(header_text) * 12  # Bold headers need more space
+            
+            # Find the maximum width for this column
+            max_content_width = 0
+            for item in self.live_data_tree.get_children():
+                visible_col_index = visible_columns.index(col)
+                try:
+                    value = str(self.live_data_tree.item(item, 'values')[visible_col_index])
+                    # Better content width calculation - account for different character widths
+                    content_width = len(value) * 10  # Regular text width
+                    max_content_width = max(max_content_width, content_width)
+                except IndexError:
+                    continue
+            
+            # Take the maximum of header and content widths
+            calculated_width = max(header_width, max_content_width)
+            
+            # Set column-specific minimum and maximum widths with more generous limits
+            column_limits = {
+                "DeviceID": {"min": 60, "max": 120},
+                "DeviceType": {"min": 70, "max": 120},
+                "RFID": {"min": 80, "max": 140},
+                "SerialNumber": {"min": 120, "max": 180},
+                "DeviceName": {"min": 120, "max": 300},
+                "RFCommunication": {"min": 80, "max": 140},
+                "CommStatus": {"min": 100, "max": 180},
+                "SignalQuality": {"min": 100, "max": 150},
+                "RSSI": {"min": 80, "max": 140},
+                "LQI": {"min": 60, "max": 100},
+                "GatewayPER": {"min": 80, "max": 140},
+                "Battery": {"min": 80, "max": 140}
+            }
+            
+            limits = column_limits.get(col, {"min": 60, "max": 200})
+            min_width = limits["min"]
+            max_width_limit = limits["max"]
+            
+            # Add generous padding and apply limits
+            final_width = calculated_width + 30  # More generous padding
+            final_width = min(final_width, max_width_limit)
+            final_width = max(min_width, final_width)
+            
+            # Apply the width
+            self.live_data_tree.column(col, width=final_width)
+
+    def update_column_visibility(self):
+        """Update which columns are visible in the live diagnostics table"""
+        # Get list of visible columns
+        visible_columns = []
+        for col in self.live_data_tree_columns:
+            if self.column_visibility[col].get():
+                visible_columns.append(col)
+        
+        # Update the tree view to show only visible columns
+        self.live_data_tree.config(columns=visible_columns)
+        
+        # Reset column headings for visible columns
+        column_display_names = {
+            "DeviceID": "ID",
+            "DeviceType": "Type",
+            "RFID": "RFID",
+            "SerialNumber": "Serial Number",
+            "DeviceName": "Name",
+            "RFCommunication": "RF Com.",
+            "CommStatus": "Com. Status",
+            "SignalQuality": "Signal Quality",
+            "RSSI": "RSSI (dBm)",
+            "LQI": "LQI",
+            "GatewayPER": "Gateway PER",
+            "Battery": "Battery (V)"
+        }
+        
+        for col in visible_columns:
+            self.live_data_tree.heading(col, text=column_display_names.get(col, col))
+        
+        # Clear existing data and refresh if live diagnostics is running
+        for item in self.live_data_tree.get_children():
+            self.live_data_tree.delete(item)
+        
+        # If live diagnostics is running, trigger a refresh
+        if self.live_diagnostics_enabled:
+            # The data will be refreshed on the next update cycle
+            pass
+        
+        # Auto-adjust column widths
+        self._auto_adjust_column_widths()
+
     def on_closing(self):
         """Handle application closing"""
-        if self.is_running:
-            if messagebox.askokcancel("Quit", "Export is running. Do you want to stop and quit?"):
-                self.stop_export()
+        if self.is_running or self.live_diagnostics_enabled:
+            message = "Export is running. Do you want to stop and quit?"
+            if self.live_diagnostics_enabled:
+                message = "Live diagnostics is running. Do you want to stop and quit?"
+            if self.is_running and self.live_diagnostics_enabled:
+                message = "Export and live diagnostics are running. Do you want to stop and quit?"
+            
+            if messagebox.askokcancel("Quit", message):
+                if self.is_running:
+                    self.stop_export()
+                if self.live_diagnostics_enabled:
+                    self.stop_live_diagnostics()
                 self.root.after(1000, self.root.destroy)  # Give time for cleanup
         else:
             self.root.destroy()
