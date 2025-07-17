@@ -4,11 +4,6 @@ Modbus Data Exporter GUI Application
 Exports Modbus device data to CSV or Excel format
 """
 
-# Version information
-__version__ = "1.5.0"
-__release_date__ = "2025-01-17"
-__author__ = "Stefan Weidinger"
-
 import tkinter as tk
 from tkinter import messagebox, filedialog, ttk
 import threading
@@ -22,6 +17,28 @@ import weakref
 from collections import OrderedDict
 import hashlib
 from functools import lru_cache
+import asyncio
+import concurrent.futures
+import gc
+import logging
+import traceback
+from typing import Optional, Dict, Any, List
+
+# Version information
+__version__ = "1.6.0"
+__release_date__ = "2025-01-17"
+__author__ = "Stefan Weidinger"
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('modbus_exporter.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Try to import modbus library
 try:
@@ -149,6 +166,67 @@ class MemoryManager:
             return 0
 
 memory_manager = MemoryManager()
+
+# Enhanced error handling system
+class ModbusError(Exception):
+    """Custom exception for Modbus operations"""
+    def __init__(self, message, error_code=None, details=None):
+        super().__init__(message)
+        self.error_code = error_code
+        self.details = details or {}
+        self.timestamp = datetime.now()
+        logger.error(f"ModbusError: {message} (Code: {error_code})")
+
+class ConnectionError(ModbusError):
+    """Exception for connection failures"""
+    def __init__(self, message, ip=None, port=502):
+        super().__init__(message, "CONNECTION_FAILED", {"ip": ip, "port": port})
+        self.ip = ip
+        self.port = port
+
+class DataValidationError(ModbusError):
+    """Exception for data validation failures"""
+    def __init__(self, message, field=None, value=None):
+        super().__init__(message, "DATA_VALIDATION_FAILED", {"field": field, "value": value})
+        self.field = field
+        self.value = value
+
+class AsyncOperationManager:
+    """Manages asynchronous operations with proper error handling"""
+    def __init__(self, max_workers=4):
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        self.active_futures = set()
+        self.logger = logging.getLogger(__name__ + '.AsyncOperationManager')
+    
+    def submit_task(self, func, *args, **kwargs):
+        """Submit a task for asynchronous execution"""
+        future = self.executor.submit(self._wrapped_execution, func, *args, **kwargs)
+        self.active_futures.add(future)
+        future.add_done_callback(self._task_completed)
+        return future
+    
+    def _wrapped_execution(self, func, *args, **kwargs):
+        """Wrapped execution with error handling"""
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            self.logger.error(f"Async task failed: {e}")
+            self.logger.debug(f"Traceback: {traceback.format_exc()}")
+            raise
+    
+    def _task_completed(self, future):
+        """Callback when task is completed"""
+        self.active_futures.discard(future)
+        if future.exception():
+            self.logger.error(f"Task completed with exception: {future.exception()}")
+    
+    def shutdown(self, wait=True):
+        """Shutdown the executor"""
+        self.executor.shutdown(wait=wait)
+        self.active_futures.clear()
+
+# Global async manager
+async_manager = AsyncOperationManager()
 
 # Optimized decode functions with caching
 @lru_cache(maxsize=1000)
