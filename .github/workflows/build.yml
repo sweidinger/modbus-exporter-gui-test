@@ -177,6 +177,16 @@ jobs:
           cd ..
           echo "Created ZIP files:"
           ls -la *.zip
+          
+          # Also create a standalone certificate file if it exists
+          if [ -f "windows-artifacts/modbus_exporter_certificate.cer" ]; then
+            cp "windows-artifacts/modbus_exporter_certificate.cer" "modbus_exporter_certificate.cer"
+            echo "Certificate file prepared for release"
+            echo "CERTIFICATE_AVAILABLE=true" >> $GITHUB_ENV
+          else
+            echo "No certificate file found, skipping certificate inclusion"
+            echo "CERTIFICATE_AVAILABLE=false" >> $GITHUB_ENV
+          fi
 
       - name: Check if release already exists
         id: check_release
@@ -234,5 +244,6 @@ jobs:
           files: |
             modbus_exporter_v${{ env.VERSION }}_windows.zip
             modbus_exporter_v${{ env.VERSION }}_macos.zip
+            modbus_exporter_certificate.cer
           draft: false
           prerelease: false
