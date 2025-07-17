@@ -612,177 +612,190 @@ class ModbusExporterGUI:
     def setup_gui(self):
         """Setup the main GUI elements"""
         
-        # Header frame for title and version info
-        header_frame = tk.Frame(self.root, bg='#333333')
-        header_frame.pack(fill='x', pady=10)
+        # Header frame with modern gradient-like effect
+        header_frame = tk.Frame(self.root, bg='#6272a4', relief='flat')
+        header_frame.pack(fill='x', pady=(0, 10))
         
-        # Title (left side)
-        title_label = tk.Label(header_frame, text="Modbus Data Exporter", 
-                              font=("Arial", 16, "bold"), 
-                              bg='#333333', fg='white')
-        title_label.pack(side='left', padx=(20, 0))
+        # Title with professional styling
+        title_label = tk.Label(header_frame, text="Modbus Data Exporter Professional", 
+                              font=("Helvetica Neue", 24, "bold"), 
+                              bg='#6272a4', fg='#f8f8f2')
+        title_label.pack(side='left', padx=(30, 0), pady=15)
         
-        # Version info box (right side) - simplified with tooltip
-        version_frame = tk.Frame(header_frame, bg='#444444', relief='raised', bd=2)
-        version_frame.pack(side='right', padx=(0, 20))
+        # Version info with modern styling
+        version_frame = tk.Frame(header_frame, bg='#44475a', relief='flat', bd=0)
+        version_frame.pack(side='right', padx=(0, 30), pady=10)
         
-        version_label = tk.Label(version_frame, text=f"Version {__version__}", 
-                                font=("Arial", 10, "bold"), 
-                                bg='#444444', fg='#ffffff')
-        version_label.pack(padx=10, pady=5)
+        version_label = tk.Label(version_frame, text=f"v{__version__}", 
+                                font=("Helvetica Neue", 12, "bold"), 
+                                bg='#44475a', fg='#50fa7b')
+        version_label.pack(padx=15, pady=8)
         
         # Create tooltip for version info
         self.create_tooltip(version_label, f"Released: {__release_date__}\nBy: {__author__}")
         
-        # Main container for two-column layout
-        main_container = tk.Frame(self.root, bg='#333333')
-        main_container.pack(fill='both', expand=True, padx=10, pady=10)
+        # Main container with modern styling
+        main_container = tk.Frame(self.root, bg='#282a36')
+        main_container.pack(fill='both', expand=True, padx=20, pady=10)
         
         # Configure column weights for proportional sizing
         main_container.grid_columnconfigure(0, weight=35)  # Left column: 35% of width
         main_container.grid_columnconfigure(1, weight=65)  # Right column: 65% of width
         main_container.grid_rowconfigure(0, weight=1)      # Single row fills height
         
-        # Left column - Controls and Log (35% of width)
-        left_column = tk.Frame(main_container, bg='#333333')
-        left_column.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
+        # Left column with modern card-like appearance
+        left_column = tk.Frame(main_container, bg='#282a36')
+        left_column.grid(row=0, column=0, sticky='nsew', padx=(0, 10))
         
-        # Right column - Live Diagnostics View (65% of width)
-        right_column = tk.Frame(main_container, bg='#333333')
-        right_column.grid(row=0, column=1, sticky='nsew', padx=(5, 0))
+        # Right column with modern card-like appearance
+        right_column = tk.Frame(main_container, bg='#282a36')
+        right_column.grid(row=0, column=1, sticky='nsew', padx=(10, 0))
         
         # Adjust weight of row containing checkboxes to reduce resizing
         right_column.grid_rowconfigure(1, weight=1)  # Ensure stability of Live View
         
         # === LEFT COLUMN CONTENT ===
         
-        # IP Address Section
-        ip_frame = tk.Frame(left_column, bg='#cccccc', relief='raised', bd=2)
-        ip_frame.pack(fill='x', pady=5)
+        # IP Address Section with modern card design
+        ip_frame = tk.Frame(left_column, bg='#44475a', relief='flat', bd=0)
+        ip_frame.pack(fill='x', pady=(0, 15))
         
-        ip_label = tk.Label(ip_frame, text="Modbus Device IP Address:", 
-                           font=("Arial", 12), bg='#cccccc', fg='#000000')
-        ip_label.pack(pady=5)
+        ip_label = tk.Label(ip_frame, text="Device IP Address", 
+                           font=("Helvetica Neue", 14, "bold"), 
+                           bg='#44475a', fg='#f8f8f2')
+        ip_label.pack(pady=(15, 10))
         
-        # IP Entry with clear visibility
-        self.ip_entry = tk.Entry(ip_frame, width=20, font=("Arial", 12),
-                                relief='sunken', bd=2, bg='#ffffff', fg='#000000',
-                                highlightbackground='#cccccc',
-                                highlightcolor='#0066cc', highlightthickness=1,
-                                insertbackground='#000000')
-        self.ip_entry.pack(pady=5)
+        # Modern IP Entry with professional styling
+        self.ip_entry = tk.Entry(ip_frame, width=25, font=("Helvetica Neue", 12),
+                                relief='flat', bd=0, bg='#6272a4', fg='#f8f8f2',
+                                highlightbackground='#44475a',
+                                highlightcolor='#50fa7b', highlightthickness=2,
+                                insertbackground='#f8f8f2')
+        self.ip_entry.pack(pady=(0, 15), ipady=8)
         self.ip_entry.config(state='normal')  # Make sure the entry is enabled
         self.ip_entry.focus_set()  # Set focus to the IP entry
         self.ip_entry.insert(0, "10.0.1.110")  # Default value
         
-        # Test IP Button Frame
-        test_frame = tk.Frame(left_column, bg='#cccccc', relief='raised', bd=2)
-        test_frame.pack(fill='x', pady=5)
+        # Test IP Button with modern design
+        test_frame = tk.Frame(left_column, bg='#282a36')
+        test_frame.pack(fill='x', pady=(0, 15))
         
-        # Test IP Button
-        test_btn = tk.Button(test_frame, text="Test IP Connection", 
+        # Professional Test Button
+        test_btn = tk.Button(test_frame, text="Test Connection", 
                             command=self.test_ip,
-                            font=("Arial", 12),
-                            bg='#cccccc',  # Match parent frame background
-                            fg='black',
-                            relief='flat',
-                            bd=0,
+                            font=("Helvetica Neue", 12, "bold"),
+                            bg='#8be9fd', fg='#282a36',
+                            relief='flat', bd=0,
                             highlightthickness=0,
-                            activebackground='#bbbbbb',
-                            activeforeground='black')
-        test_btn.pack(fill='x', padx=10, pady=10)
+                            activebackground='#50fa7b',
+                            activeforeground='#282a36')
+        test_btn.pack(fill='x', padx=0, pady=0, ipady=10)
         
-        # Export Options Section
-        export_frame = tk.Frame(left_column, bg='#cccccc', relief='raised', bd=2)
-        export_frame.pack(fill='x', pady=5)
+        # Export Options with modern card design
+        export_frame = tk.Frame(left_column, bg='#44475a', relief='flat', bd=0)
+        export_frame.pack(fill='x', pady=(0, 15))
         
-        export_label = tk.Label(export_frame, text="Export Format:", 
-                               font=("Arial", 12), bg='#cccccc', fg='#000000')
-        export_label.pack(pady=5)
+        export_label = tk.Label(export_frame, text="Export Options", 
+                               font=("Helvetica Neue", 14, "bold"), 
+                               bg='#44475a', fg='#f8f8f2')
+        export_label.pack(pady=(15, 10))
         
-        # CSV Checkbox
+        # Modern checkboxes with professional styling
         csv_cb = tk.Checkbutton(export_frame, text="Export to CSV",
-                               variable=self.csv_var, font=("Arial", 10),
-                               bg='#cccccc', fg='#000000', activeforeground='#000000',
-                               activebackground='#aaaaaa')
-        csv_cb.pack(pady=2)
+                               variable=self.csv_var, font=("Helvetica Neue", 11),
+                               bg='#44475a', fg='#f8f8f2', activeforeground='#50fa7b',
+                               activebackground='#44475a', selectcolor='#6272a4')
+        csv_cb.pack(pady=5, padx=15, anchor='w')
         
-        # Excel Checkbox
+        # Excel Checkbox with modern styling
         excel_text = "Export to Excel" if EXCEL_AVAILABLE else "Export to Excel (openpyxl not installed)"
         excel_cb = tk.Checkbutton(export_frame, text=excel_text,
-                                 variable=self.excel_var, font=("Arial", 10),
-                                 bg='#cccccc', fg='#000000', activeforeground='#000000',
-                                 activebackground='#aaaaaa', disabledforeground='#000000',
+                                 variable=self.excel_var, font=("Helvetica Neue", 11),
+                                 bg='#44475a', fg='#f8f8f2', activeforeground='#50fa7b',
+                                 activebackground='#44475a', selectcolor='#6272a4',
+                                 disabledforeground='#6272a4',
                                  state='normal' if EXCEL_AVAILABLE else 'disabled')
-        excel_cb.pack(pady=2)
+        excel_cb.pack(pady=5, padx=15, anchor='w')
         
         # Enhanced Diagnostics Checkbox
         enhanced_diag_cb = tk.Checkbutton(export_frame, text="Enable Enhanced Diagnostics",
-                                       variable=self.enhanced_diagnostics_var, font=("Arial", 10),
-                                       bg='#cccccc', fg='#000000', activeforeground='#000000',
-                                       activebackground='#aaaaaa')
-        enhanced_diag_cb.pack(pady=2)
+                                       variable=self.enhanced_diagnostics_var, font=("Helvetica Neue", 11),
+                                       bg='#44475a', fg='#f8f8f2', activeforeground='#50fa7b',
+                                       activebackground='#44475a', selectcolor='#6272a4')
+        enhanced_diag_cb.pack(pady=5, padx=15, anchor='w')
         
         # Sensor Pairing Sheet Checkbox
         sensor_pairing_cb = tk.Checkbutton(export_frame, text="Generate Sensor Pairing Sheet",
-                                         variable=self.sensor_pairing_var, font=("Arial", 10),
-                                         bg='#cccccc', fg='#000000', activeforeground='#000000',
-                                         activebackground='#aaaaaa')
-        sensor_pairing_cb.pack(pady=2)
+                                         variable=self.sensor_pairing_var, font=("Helvetica Neue", 11),
+                                         bg='#44475a', fg='#f8f8f2', activeforeground='#50fa7b',
+                                         activebackground='#44475a', selectcolor='#6272a4')
+        sensor_pairing_cb.pack(pady=(5, 15), padx=15, anchor='w')
 
-        # Control Buttons
-        button_frame = tk.Frame(left_column, bg='#333333')
-        button_frame.pack(pady=10)
+        # Control Buttons with modern design
+        button_frame = tk.Frame(left_column, bg='#282a36')
+        button_frame.pack(pady=15)
         
         self.start_btn = tk.Button(button_frame, text="START EXPORT",
                                   command=self.start_export,
-                                  bg='#2196F3', fg='black',
-                                  font=("Arial", 12, "bold"),
-                                  width=12, height=2)
+                                  bg='#50fa7b', fg='#282a36',
+                                  font=("Helvetica Neue", 12, "bold"),
+                                  width=15, height=2, relief='flat', bd=0,
+                                  activebackground='#8be9fd',
+                                  activeforeground='#282a36')
         self.start_btn.pack(side='left', padx=5)
         
         self.stop_btn = tk.Button(button_frame, text="STOP EXPORT",
                                  command=self.stop_export,
-                                 bg='#f44336', fg='black',
-                                 font=("Arial", 12, "bold"),
-                                 width=12, height=2,
+                                 bg='#ff5555', fg='#f8f8f2',
+                                 font=("Helvetica Neue", 12, "bold"),
+                                 width=15, height=2, relief='flat', bd=0,
+                                 activebackground='#ff6e6e',
+                                 activeforeground='#f8f8f2',
                                  state='disabled')
         self.stop_btn.pack(side='left', padx=5)
         
         exit_btn = tk.Button(button_frame, text="EXIT",
                             command=self.on_closing,
-                            bg='#757575', fg='black',
-                            font=("Arial", 12, "bold"),
-                            width=12, height=2)
+                            bg='#6272a4', fg='#f8f8f2',
+                            font=("Helvetica Neue", 12, "bold"),
+                            width=15, height=2, relief='flat', bd=0,
+                            activebackground='#44475a',
+                            activeforeground='#f8f8f2')
         exit_btn.pack(side='left', padx=5)
         
-        # Status Section
-        status_frame = tk.Frame(left_column, bg='#cccccc', relief='raised', bd=2)
-        status_frame.pack(fill='x', pady=5)
+        # Status Section with modern design
+        status_frame = tk.Frame(left_column, bg='#44475a', relief='flat', bd=0)
+        status_frame.pack(fill='x', pady=(0, 15))
         
-        status_title = tk.Label(status_frame, text="Status:", 
-                               font=("Arial", 12, "bold"), bg='#cccccc', fg='#000000')
-        status_title.pack(pady=5)
+        status_title = tk.Label(status_frame, text="Status", 
+                               font=("Helvetica Neue", 14, "bold"), 
+                               bg='#44475a', fg='#f8f8f2')
+        status_title.pack(pady=(15, 5))
         
         self.status_label = tk.Label(status_frame, text="Ready", 
-                                    font=("Arial", 11), bg='#cccccc', fg='#000000')
-        self.status_label.pack(pady=5)
+                                    font=("Helvetica Neue", 12), 
+                                    bg='#44475a', fg='#50fa7b')
+        self.status_label.pack(pady=(0, 15))
         
-        # Log Section
-        log_frame = tk.Frame(left_column, bg='#cccccc', relief='raised', bd=2)
-        log_frame.pack(fill='both', expand=True, pady=5)
+        # Log Section with modern design
+        log_frame = tk.Frame(left_column, bg='#44475a', relief='flat', bd=0)
+        log_frame.pack(fill='both', expand=True, pady=0)
         
-        log_title = tk.Label(log_frame, text="Log Output:", 
-                            font=("Arial", 12, "bold"), bg='#cccccc', fg='#000000')
-        log_title.pack(pady=5)
+        log_title = tk.Label(log_frame, text="Activity Log", 
+                            font=("Helvetica Neue", 14, "bold"), 
+                            bg='#44475a', fg='#f8f8f2')
+        log_title.pack(pady=(15, 10))
         
-        # Log text with scrollbar
-        log_container = tk.Frame(log_frame, bg='#cccccc')
-        log_container.pack(fill='both', expand=True, padx=5, pady=5)
+        # Modern log text with scrollbar
+        log_container = tk.Frame(log_frame, bg='#44475a')
+        log_container.pack(fill='both', expand=True, padx=15, pady=(0, 15))
         
         self.log_text = tk.Text(log_container, height=8, width=50,
-                               bg='#000000', fg='#00ff00', font=("Courier", 9),
-                               relief='sunken', bd=2)
+                               bg='#282a36', fg='#50fa7b', font=("SF Mono", 10),
+                               relief='flat', bd=0,
+                               highlightbackground='#6272a4',
+                               highlightcolor='#50fa7b',
+                               highlightthickness=1)
         
         log_scrollbar = tk.Scrollbar(log_container, orient='vertical',
                                     command=self.log_text.yview)
@@ -793,44 +806,50 @@ class ModbusExporterGUI:
         
         # === RIGHT COLUMN CONTENT - Live Diagnostics View ===
         
-        # Live Diagnostics Header
-        live_diag_header = tk.Frame(right_column, bg='#cccccc', relief='raised', bd=2)
-        live_diag_header.pack(fill='x', pady=5)
+        # Live Diagnostics Header with modern styling
+        live_diag_header = tk.Frame(right_column, bg='#44475a', relief='flat', bd=0)
+        live_diag_header.pack(fill='x', pady=(0, 15))
         
         live_diag_title = tk.Label(live_diag_header, text="Live Diagnostics View", 
-                                  font=("Arial", 14, "bold"), bg='#cccccc', fg='#000000')
-        live_diag_title.pack(pady=10)
+                                  font=("Helvetica Neue", 16, "bold"), 
+                                  bg='#44475a', fg='#f8f8f2')
+        live_diag_title.pack(pady=(15, 10))
         
-        # Live Diagnostics Button
+        # Live Diagnostics Button with modern styling
         self.live_diag_btn = tk.Button(live_diag_header, text="Start Live Diagnostics",
                                       command=self.toggle_live_diagnostics,
-                                      bg='#4CAF50', fg='black',
-                                      font=("Arial", 12, "bold"),
-                                      width=20, height=2,
+                                      bg='#50fa7b', fg='#282a36',
+                                      font=("Helvetica Neue", 12, "bold"),
+                                      width=20, height=2, relief='flat', bd=0,
+                                      activebackground='#8be9fd',
+                                      activeforeground='#282a36',
                                       state='disabled')  # Disabled until connection test passes
         self.live_diag_btn.pack(pady=10)
         
-        # Live Diagnostics Status
+        # Live Diagnostics Status with modern styling
         self.live_diag_status = tk.Label(live_diag_header, text="Status: Connection required", 
-                                        font=("Arial", 10), bg='#cccccc', fg='#666666')
+                                        font=("Helvetica Neue", 11), 
+                                        bg='#44475a', fg='#bd93f9')
         self.live_diag_status.pack(pady=5)
         
-        # Last Update Timestamp
+        # Last Update Timestamp with modern styling
         self.last_update_label = tk.Label(live_diag_header, text="Last Update: Never", 
-                                         font=("Arial", 9), bg='#cccccc', fg='#666666')
+                                         font=("Helvetica Neue", 10), 
+                                         bg='#44475a', fg='#6272a4')
         self.last_update_label.pack(pady=2)
         
-        # Column Visibility Controls
-        columns_frame = tk.Frame(live_diag_header, bg='#cccccc')
-        columns_frame.pack(pady=5, fill='x')  # Ensure consistent width for stability
+        # Column Visibility Controls with modern styling
+        columns_frame = tk.Frame(live_diag_header, bg='#44475a')
+        columns_frame.pack(pady=10, fill='x')  # Ensure consistent width for stability
         
         columns_label = tk.Label(columns_frame, text="Visible Columns:", 
-                                font=("Arial", 10, "bold"), bg='#cccccc', fg='#000000')
+                                font=("Helvetica Neue", 11, "bold"), 
+                                bg='#44475a', fg='#f8f8f2')
         columns_label.pack(pady=2)
         
         # Create a frame for column checkboxes in a grid layout
-        column_checkboxes_frame = tk.Frame(columns_frame, bg='#cccccc')
-        column_checkboxes_frame.pack(pady=2)
+        column_checkboxes_frame = tk.Frame(columns_frame, bg='#44475a')
+        column_checkboxes_frame.pack(pady=5)
         
         # Column display names
         column_display_names = {
@@ -848,7 +867,7 @@ class ModbusExporterGUI:
             "Battery": "Battery"
         }
         
-        # Create checkboxes for each column in a 2x5 grid
+        # Create checkboxes for each column in a 2x5 grid with modern styling
         for idx, col in enumerate(self.live_data_tree_columns):
             row = idx // 5
             column = idx % 5
@@ -857,13 +876,16 @@ class ModbusExporterGUI:
                                text=column_display_names.get(col, col),
                                variable=self.column_visibility[col],
                                command=self.update_column_visibility,
-                               font=("Arial", 8), bg='#cccccc', fg='#000000',
-                               activeforeground='#000000', activebackground='#aaaaaa')
-            cb.grid(row=row, column=column, sticky='w', padx=2, pady=1)
+                               font=("Helvetica Neue", 9), 
+                               bg='#44475a', fg='#f8f8f2',
+                               activeforeground='#50fa7b', 
+                               activebackground='#44475a',
+                               selectcolor='#6272a4')
+            cb.grid(row=row, column=column, sticky='w', padx=3, pady=2)
         
-        # Live Diagnostics Data Frame
-        live_data_frame = tk.Frame(right_column, bg='#cccccc', relief='raised', bd=2)
-        live_data_frame.pack(fill='both', expand=True, pady=5)
+        # Live Diagnostics Data Frame with modern styling
+        live_data_frame = tk.Frame(right_column, bg='#44475a', relief='flat', bd=0)
+        live_data_frame.pack(fill='both', expand=True, pady=0)
         
         # Set a fixed width for the live data frame to prevent resizing
         live_data_frame.pack_propagate(False)
@@ -892,12 +914,12 @@ class ModbusExporterGUI:
             self.live_data_tree.heading(col, text=config["text"])
             self.live_data_tree.column(col, width=config["width"], anchor=config["anchor"], minwidth=50)
         
-        # Configure tree view styling with color tags
+        # Configure tree view styling with modern color scheme
         style = ttk.Style()
         style.theme_use('clam')
-        style.configure('Treeview', background='#ffffff', foreground='#000000', fieldbackground='#ffffff')
-        style.configure('Treeview.Heading', background='#e0e0e0', foreground='#000000', font=('Arial', 10, 'bold'))
-        style.map('Treeview', background=[('selected', '#0078d4')])
+        style.configure('Treeview', background='#f8f8f2', foreground='#282a36', fieldbackground='#f8f8f2')
+        style.configure('Treeview.Heading', background='#6272a4', foreground='#f8f8f2', font=('Helvetica Neue', 11, 'bold'))
+        style.map('Treeview', background=[('selected', '#bd93f9')], foreground=[('selected', '#282a36')])
         
         # Configure tags for different value types
         self.live_data_tree.tag_configure('good', foreground='#4CAF50')
